@@ -71,7 +71,7 @@ Copyright © 2024, by the California Institute of Technology. ALL RIGHTS RESERVE
 
 This software may be subject to U.S. export control laws. By accepting this software, the user agrees to comply with all applicable U.S. export laws and regulations. User has the responsibility to obtain export licenses, or other export authority as may be required before exporting such information to foreign countries or providing access to foreign persons.
 
-Licensed under the Apache License, Version 2.0 (the "LICENCE");
+Licensed under the Apache License, Version 2.0 (the "Licence");
 you may not use this file except in compliance with the License.
 You may obtain a copy of the License at
 
