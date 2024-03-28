@@ -64,6 +64,7 @@ In case `pymultinest` finds multiple solutions, ExoTR will automatically plot th
 
 ## Acknowledgement
 The research was carried out at the Jet Propulsion Laboratory, California Institute of Technology, under a contract with the National Aeronautics and Space Administration (80NM0018D0004).
+The High Performance Computing resources used in this investigation were provided by funding from the JPL Information and Technology Solutions Directorate.
 
 ## License
 Copyright © 2024, by the California Institute of Technology. ALL RIGHTS RESERVED. United States Government Sponsorship acknowledged. Any commercial use must be negotiated with the Office of Technology Transfer at the California Institute of Technology.
