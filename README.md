@@ -9,8 +9,8 @@ Includes:
 * A retrieval routine based on nested sampling (i.e. MultiNest).
 
 ## Authors
-* Mario Damiano (Jet Propulsion Laboratory, California Institute of Technology)
-* Renyu Hu (Jet Propulsion Laboratory, California Institute of Technology)
+* [Mario Damiano](https://mdamiano.github.io/) (Jet Propulsion Laboratory, California Institute of Technology)
+* [Renyu Hu](https://renyuplanet.github.io/) (Jet Propulsion Laboratory, California Institute of Technology)
 
 ## Collaborators
 * Armen Tokadjian (Jet Propulsion Laboratory, California Institute of Technology)
