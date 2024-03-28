@@ -1,0 +1,75 @@
+%   [STAR]    %
+Rs				                    None
+Ms                                  None
+Loggs                               None
+Ts			                        None
+Ts_err                              None
+meta                                None
+Ts_het                              None
+st_frac                             None
+
+%   [PLANET]  %
+name_p                              None
+major-a                             None
+Rp                                  None
+Mp                                  None
+eccentricity                        None
+inclination                         90.0
+
+%   [MODEL_PAR]     %
+% fit planetary radius
+fit_Rp                              True
+% fit planetary temperature
+fit_T                               False
+% fit molecules
+fit_H2O                             False
+fit_CH4                             False
+fit_C2H2                            False
+fit_C2H4                            False
+fit_C2H6                            False
+fit_NH3                             False
+fit_HCN                             False
+fit_H2S                             False
+fit_CO                              False
+fit_CO2                             False
+fit_N2                              False
+% gas filling
+gas_fill                            None
+% cloud parameters
+incl_clouds                         None
+cloud_type                          None
+
+% haze parameters
+incl_haze                           False
+
+% fit gravity
+fit_g                               False
+
+% fit for offsets betweeen different observations. Offset range in ppm.
+fit_offset                          False
+offset_range                        100
+
+% fit for star activity
+incl_star_activity                  False
+fit_het_frac                        False
+fit_Ts_het                          False
+fit_Ts_phot                         False
+
+optimizer                           None
+
+%   [MultiNest]     %
+multimodal                          True
+max_modes                           100
+ev_tolerance                        0.5
+nlive_p                             600
+multinest_resume                    True
+multinest_verbose                   False
+
+%   [Plotting_Options]     %
+plot_posterior                      False
+truths                              None
+
+%   [Create_Spectrum_Noise]   %
+add_noise                           False
+snr                                 20
+return_bins                         False

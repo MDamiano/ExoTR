@@ -1,0 +1,50 @@
+%   [STAR]    %
+Rs                                  0.326568
+Ms                                  0.30713
+Ts                                  3365
+
+%   [PLANET]  %
+name_p                              Example
+major-a                             0.085016
+Mp                                  3.6
+Rp                                  2.11123898401829
+Tp                                  246.2
+inclination                         90.0
+
+%   [GENERAL_PAR]     %
+spectrum                            spectra/example_data.dat
+output_directory                    Retrieval/example/
+
+%   [ATMOSPHERIC_MODEL_PAR]     %
+fit_T                               False
+% fit molecules
+fit_H2O                             True
+fit_CH4                             True
+fit_C2H2                            False
+fit_C2H4                            False
+fit_C2H6                            False
+fit_NH3                             True
+fit_HCN                             False
+fit_H2S                             False
+fit_CO                              True
+fit_CO2                             True
+fit_N2                              False
+% gas filling
+gas_fill                            H2
+% cloud parameters
+incl_clouds                         True
+cloud_type                          water
+% fit gravity
+fit_g                               False
+
+optimizer                           multinest
+
+%   [MultiNest]     %
+nlive_p                             600
+ev_tolerance                        0.75
+multinest_resume                    True
+multinest_verbose                   True
+
+%   [Plotting_Options]     %
+plot_posterior                      True
+truths                              None

@@ -1,0 +1,38 @@
+%   [STAR]    %
+
+Rs                                  0.326568
+Ms                                  0.30713
+Ts                                  3365
+
+%   [PLANET]    %
+
+name_p                              Example
+major-a                             0.085016
+Mp                                  3.6
+Rp                                  2.11123898401829
+gp                                  15.370771991271694
+Tp                                  246.2
+
+%   [GENERAL_PAR]     %
+
+wave_file                           R500_03_20
+output_directory                    try/
+file_output_name                    example
+
+%   [ATMOSPHERIC_MODEL_PAR]     %
+incl_clouds                         True
+cloud_type                          water
+gas_fill                            H2
+
+vmr_H2O                             0.9
+pH2O                                3.00
+dH2O                                4.99563519459755
+crH2O                               -0.3521825181113625
+vmr_CO2                             4e-04
+vmr_CH4                             4e-05
+vmr_CO                              2e-05
+vmr_NH3                             6e-05
+
+%   [Create_Spectrum_Noise]   %
+add_noise                           False
+snr                                 20
