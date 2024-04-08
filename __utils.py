@@ -370,6 +370,8 @@ def load_input_spectrum(param):
                 param['spectrum']['bins'] = True
                 param['min_wl'] = min(param['spectrum']['wl_bins'][:, 0])
                 param['max_wl'] = max(param['spectrum']['wl_bins'][:, 1])
+                param['spectrum']['wl_low'] = param['spectrum']['wl_bins'][:, 0]
+                param['spectrum']['wl_high'] = param['spectrum']['wl_bins'][:, 1]
             param['spectrum']['wl'] = spectrum[:, wl_idx]  # wavelength in micron
             param['spectrum']['T_depth'] = spectrum[:, wl_idx + 1]  # Transit depth
             param['spectrum']['error_T'] = spectrum[:, wl_idx + 2]  # error on Transit depth
