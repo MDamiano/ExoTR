@@ -125,8 +125,6 @@ class CREATE_SPECTRUM:
             self.param['Pa_top'] = 10. ** self.param['pNH3']
             self.param['clda_depth'] = 10. ** self.param['dNH3']
             self.param['CR_NH3'] = 10. ** self.param['crNH3']
-        if self.param['fit_g']:
-            self.param['gp'] = (10. ** (self.param['g'] - 2.0))
 
         if self.param['fit_wtr_cld']:
             print('Log(H2O_Ptop) \t = \t' + str(self.param['pH2O']))
@@ -143,6 +141,8 @@ class CREATE_SPECTRUM:
             print('diam_haze \t = \t' + str(self.param['diam_haze']))
             print('vmr_haze \t = \t' + str(self.param['vmr_haze']))
 
+        print('Rp \t\t = \t' + str(self.param['Rp']))
+        print('Mp \t\t = \t' + str(self.param['Mp']))
         try:
             print('g \t\t = \t' + str(self.param['gp']))
         except KeyError:
@@ -200,6 +200,5 @@ class CREATE_SPECTRUM:
         except IOError or KeyError:
             if not os.path.exists(self.param['pkg_dir'] + 'Output/'):
                 os.mkdir(self.param['pkg_dir'] + 'Output/')
-
             np.savetxt(self.param['pkg_dir'] + 'Output/spectrum.dat', data)
             print('The spectrum file has been saved in ' + self.param['pkg_dir'] + 'Output/spectrum.dat')

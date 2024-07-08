@@ -1,2 +1,12 @@
+## [1.2.3]
+- Bugfixes (posterior plot)
+
+## [1.2.2]
+- Added the possibility to fit for a bare rock. Only the planetary radius is fitted. Offsets and stellar heterogeneity are optional.
+- Added support for more gases as free parameters (i.e. SO2)
+
+## [1.2.1]
+- Added 'calc_spectra' method in '__multinest'. It calculates 100 transmission spectra extracted from the posterior distribution.
+
 ## [1.2.0]
 First public release

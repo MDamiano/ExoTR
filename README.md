@@ -1,6 +1,6 @@
 # ExoTR
 
-Version 1.2.0
+Version 1.2.3
 
 A fully Bayesian inverse retrieval algorithm to interpret exoplanetary transmission spectra.
 

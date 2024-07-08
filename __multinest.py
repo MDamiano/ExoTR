@@ -1,3 +1,5 @@
+import numpy as np
+
 from .__basics import *
 from .__utils import *
 from .__forward import *
@@ -150,7 +152,15 @@ class MULTINEST:
                 evaluation['Ts_phot'] = cube[par]  # temperature of the star
                 par += 1
 
-            return forward(self.param, evaluation=evaluation, retrieval_mode=retrieval_mode)
+            try:
+                return forward(self.param, evaluation=evaluation, retrieval_mode=retrieval_mode)
+            except:
+                if MPIimport:
+                    MPI.Finalize()
+                    sys.exit()
+                else:
+                    print('Some errors occurred in during the calculation of the forward model.')
+                    sys.exit()
 
         def prior(cube, ndim, nparams):
             """
@@ -282,46 +292,42 @@ class MULTINEST:
             n_params = len(parameters)
 
             multinest_results = pymultinest.Analyzer(n_params=n_params, outputfiles_basename=prefix, verbose=True)
+            mc_samp = multinest_results.get_equal_weighted_posterior()[:, :-1]
             mds = len(multinest_results.get_mode_stats()['modes'])
-            if mds < 2:
-                # s = multinest_results.get_best_fit()
-                # cube = s['parameters']
-                # cube = np.array([cube, ]).T
 
-                # s = multinest_results.get_stats()
-                # cube = []
-                # for p, m in zip(parameters, s['marginals']):
-                #     cube.append(m['median'])
-                # cube = np.array([cube, ]).T
+            if self.param['plot_models']:
+                if mds < 2:
+                    s = multinest_results.get_stats()
+                    cube = np.ones((len(s['modes'][0]['maximum a posterior']), mds))
+                    cube[:, 0] = list(s['modes'][0]['maximum a posterior'])
 
-                s = multinest_results.get_stats()
-                cube = np.ones((len(s['modes'][0]['maximum a posterior']), mds))
-                cube[:, 0] = list(s['modes'][0]['maximum a posterior'])
+                    self.plot_nest_spec(cube[:, 0])
+                    if not self.param['bare_rock']:
+                        plot_chemistry(self.param, cube[:, 0])
+                        self.plot_contribution(cube[:, 0])
+                        self.calc_spectra(mc_samp)
+                else:
+                    s = multinest_results.get_mode_stats()
+                    cube = np.ones((len(s['modes'][0]['maximum a posterior']), mds))
+                    for i in range(0, mds):
+                        cube[:, i] = list(s['modes'][i]['maximum a posterior'])
 
-                self.plot_nest_spec(cube[:, 0])
-                plot_chemistry(self.param, cube[:, 0])
-                self.plot_contribution(cube[:, 0])
-            else:
-                s = multinest_results.get_mode_stats()
-                cube = np.ones((len(s['modes'][0]['maximum a posterior']), mds))
-                for i in range(0, mds):
-                    cube[:, i] = list(s['modes'][i]['maximum a posterior'])
+                        self.plot_nest_spec(cube[:, i], solutions=i + 1)
+                        if not self.param['bare_rock']:
+                            plot_chemistry(self.param, cube[:, i], solutions=i + 1)
+                            self.plot_contribution(cube[:, i], solutions=i + 1)
 
-                    self.plot_nest_spec(cube[:, i], solutions=i + 1)
-                    plot_chemistry(self.param, cube[:, i], solutions=i + 1)
-                    self.plot_contribution(cube[:, i], solutions=i + 1)
+                if self.param['spectrum']['bins']:
+                    data_spec = np.array([self.param['spectrum']['wl_low'], self.param['spectrum']['wl_high'], self.param['spectrum']['wl'], self.param['spectrum']['T_depth'], self.param['spectrum']['error_T']]).T
+                else:
+                    data_spec = np.array([self.param['spectrum']['wl'], self.param['spectrum']['T_depth'], self.param['spectrum']['error_T']]).T
+                np.savetxt(self.param['out_dir'] + 'data_spectrum.dat', data_spec)
 
             if self.param['plot_posterior']:
                 self.plot_posteriors(prefix, multinest_results, parameters, mds)
 
             for i in self.param['opac_data_keys']:
                 del self.param[i]
-
-            if self.param['spectrum']['bins']:
-                data_spec = np.array([self.param['spectrum']['wl_low'], self.param['spectrum']['wl_high'], self.param['spectrum']['wl'], self.param['spectrum']['T_depth'], self.param['spectrum']['error_T']]).T
-            else:
-                data_spec = np.array([self.param['spectrum']['wl'], self.param['spectrum']['T_depth'], self.param['spectrum']['error_T']]).T
-            np.savetxt(self.param['out_dir'] + 'data_spectrum.dat', data_spec)
 
         if MPIimport:
             MPI.Finalize()
@@ -343,7 +349,7 @@ class MULTINEST:
             -----
             self.param is a dictionary containing the model parameters.
         """
-        clr = {}
+
         par = 0
         if self.param['fit_offset']:
             for i in range(0, self.param['n_offsets']):
@@ -376,10 +382,12 @@ class MULTINEST:
             self.param['diam_haze'] = (10. ** cube[par])
             self.param['vmr_haze'] = (10. ** cube[par + 1])
             par += 2
-        for i in self.param['fit_molecules']:
-            clr[i] = cube[par]
-            par += 1
-        self.param = clr_to_vmr(self.param, clr)
+        if not self.param['bare_rock']:
+            clr = {}
+            for i in self.param['fit_molecules']:
+                clr[i] = cube[par]
+                par += 1
+            self.param = clr_to_vmr(self.param, clr)
         if self.param['fit_het_frac']:
             self.param['st_frac'] = cube[par]
             par += 1
@@ -413,11 +421,11 @@ class MULTINEST:
         self.cube_to_param(cube)
         fig = plt.figure(figsize=(8, 5))
 
-        plt.errorbar(self.param['spectrum']['wl'], self.param['spectrum']['T_depth'], yerr=self.param['spectrum']['error_T'],
+        plt.errorbar(self.param['spectrum']['wl'], self.param['spectrum']['T_depth']*1e6, yerr=self.param['spectrum']['error_T']*1e6,
                      linestyle='', linewidth=0.5, color='black', marker='o', markerfacecolor='red', markersize=4, capsize=1.75, label='Data')
 
         _, model = forward(self.param, retrieval_mode=False)
-        plt.plot(self.param['spectrum']['wl'], model, linestyle='', color='black', marker='d', markerfacecolor='blue', markersize=4)
+        plt.plot(self.param['spectrum']['wl'], model*1e6, linestyle='', color='black', marker='d', markerfacecolor='blue', markersize=4)
 
         new_wl = np.loadtxt(self.param['pkg_dir'] + 'Data/wl_bins/bins_02_20_R500.dat')
         new_wl_central = np.mean(new_wl, axis=1)
@@ -432,7 +440,7 @@ class MULTINEST:
         self.param['spectrum']['wl_high'] = new_wl[start:stop, 1]
 
         wl, model = forward(self.param, retrieval_mode=False)
-        plt.plot(wl, model, color='#404784', label='MAP solution R=500')
+        plt.plot(wl, model*1e6, color='#404784', label='MAP solution R=500')
 
         best_fit = np.array([wl, model]).T
         np.savetxt(self.param['out_dir'] + 'MAP_best_fit_spec.dat', best_fit)
@@ -446,7 +454,7 @@ class MULTINEST:
 
         plt.legend()
         plt.xlabel('Wavelength [$\mu$m]')
-        plt.ylabel('Transit depth (R$_p$/R$_{\star}$)$^2$')
+        plt.ylabel('Transit depth (R$_p$/R$_{\star}$)$^2$ [ppm]')
         fig.tight_layout()
 
         if solutions is None:
@@ -479,6 +487,9 @@ class MULTINEST:
         """
         self.cube_to_param(cube)
 
+        if not os.path.exists(self.param['out_dir'] + 'Contr_spec/'):
+            os.mkdir(self.param['out_dir'] + 'Contr_spec/')
+
         fig = plt.figure(figsize=(12, 5))
 
         new_wl = np.loadtxt(self.param['pkg_dir'] + 'Data/wl_bins/bins_02_20_R500.dat')
@@ -491,7 +502,7 @@ class MULTINEST:
         temp_wl = self.param['spectrum']['wl'] + 0.0
         self.param['spectrum']['wl'] = new_wl_central[start:stop]
 
-        for mol in self.param['fit_molecules']:
+        for mol in self.param['fit_molecules'] + [self.param['gas_fill']]:
             self.param[mol + '_contribution'] = False
         self.param['cld_contribution'] = False
         self.param['Rayleigh_contribution'] = False
@@ -502,51 +513,63 @@ class MULTINEST:
             print('Plotting the H2-H2 CIA contribution')
             self.param['CIA_contribution'] = True
             wl, model = forward(self.param, retrieval_mode=False)
+            comp = np.array([wl, model]).T
+            np.savetxt(self.param['out_dir'] + 'Contr_spec/contr_CIA.dat', comp)
             self.param['CIA_contribution'] = False
 
-            plt.plot(wl, model, linestyle='--', label='H$_2$-H$_2$ CIA')
+            plt.plot(wl, model * 1e6, linestyle='--', label='H$_2$-H$_2$ CIA')
 
         print('Plotting the Rayleigh scattering contribution')
         self.param['Rayleigh_contribution'] = True
         wl, model = forward(self.param, retrieval_mode=False)
+        comp = np.array([wl, model]).T
+        np.savetxt(self.param['out_dir'] + 'Contr_spec/contr_Rayleigh.dat', comp)
         self.param['Rayleigh_contribution'] = False
 
-        plt.plot(wl, model, linestyle='--', label='Rayleigh scattering')
+        plt.plot(wl, model * 1e6, linestyle='--', label='Rayleigh scattering')
 
         if self.param['incl_clouds']:
             print('Plotting the contribution of cloud')
             self.param['cld_contribution'] = True
             wl, model = forward(self.param, retrieval_mode=False)
+            comp = np.array([wl, model]).T
+            np.savetxt(self.param['out_dir'] + 'Contr_spec/contr_cloud.dat', comp)
             self.param['cld_contribution'] = False
 
-            plt.plot(wl, model, linestyle='--', label='Cloud')
+            plt.plot(wl, model * 1e6, linestyle='--', label='Cloud')
 
         if self.param['incl_haze']:
             print('Plotting the contribution of haze')
             self.param['haze_contribution'] = True
             wl, model = forward(self.param, retrieval_mode=False)
+            comp = np.array([wl, model]).T
+            np.savetxt(self.param['out_dir'] + 'Contr_spec/contr_haze.dat', comp)
             self.param['haze_contribution'] = False
 
-            plt.plot(wl, model, linestyle='--', label='Haze')
+            plt.plot(wl, model * 1e6, linestyle='--', label='Haze')
 
         if self.param['incl_star_activity']:
             print('Plotting the contribution of the star activity')
             self.param['star_act_contribution'] = True
             wl, model = forward(self.param, retrieval_mode=False)
+            comp = np.array([wl, model]).T
+            np.savetxt(self.param['out_dir'] + 'Contr_spec/contr_star.dat', comp)
             self.param['star_act_contribution'] = False
 
-            plt.plot(wl, model, linestyle='--', label='Star activity')
+            plt.plot(wl, model * 1e6, linestyle='--', label='Star heterogeneity')
 
-        for mol in self.param['fit_molecules']:
-            if mol != 'N2':
+        for mol in self.param['fit_molecules'] + [self.param['gas_fill']]:
+            if mol != 'N2' and mol != 'H2':
                 print('Plotting the contribution of ' + str(mol) + ' : VMR -> ' + str(float(self.param['vmr_' + mol])))
                 self.param[mol + '_contribution'] = True
                 wl, model = forward(self.param, retrieval_mode=False)
+                comp = np.array([wl, model]).T
+                np.savetxt(self.param['out_dir'] + 'Contr_spec/contr_' + mol + '.dat', comp)
                 self.param[mol + '_contribution'] = False
 
-                plt.plot(wl, model, linewidth=0.5, label=mol)
+                plt.plot(wl, model * 1e6, linewidth=0.5, label=mol)
 
-        for mol in self.param['fit_molecules']:
+        for mol in self.param['fit_molecules'] + [self.param['gas_fill']]:
             self.param[mol + '_contribution'] = True
         self.param['cld_contribution'] = True
         self.param['Rayleigh_contribution'] = True
@@ -556,10 +579,10 @@ class MULTINEST:
 
         wl, model = forward(self.param, retrieval_mode=False)
 
-        plt.plot(wl, model, color='black', label='MAP solution R=500')
+        plt.plot(wl, model * 1e6, color='black', label='MAP solution R=500')
 
         self.param['spectrum']['wl'] = temp_wl + 0.0
-        plt.errorbar(self.param['spectrum']['wl'], self.param['spectrum']['T_depth'], yerr=self.param['spectrum']['error_T'],
+        plt.errorbar(self.param['spectrum']['wl'], self.param['spectrum']['T_depth'] * 1e6, yerr=self.param['spectrum']['error_T'] * 1e6,
                      linestyle='', linewidth=0.5, color='black', marker='o', markerfacecolor='red', markersize=4, capsize=1.75, label='Data')
 
         plt.legend(loc='upper left', bbox_to_anchor=(1, 1))
@@ -577,6 +600,39 @@ class MULTINEST:
 
         if is_bins:
             self.param['spectrum']['bins'] = True
+
+    def calc_spectra(self, mc_samples, nsample=100):
+        new_wl = np.loadtxt(self.param['pkg_dir'] + 'Data/wl_bins/bins_02_20_R500.dat')
+        new_wl_central = np.mean(new_wl, axis=1)
+        start = find_nearest(new_wl_central, min(self.param['spectrum']['wl']) - 0.05)
+        stop = find_nearest(new_wl_central, max(self.param['spectrum']['wl']) + 0.05)
+        if self.param['spectrum']['bins']:
+            temp = np.array([self.param['spectrum']['wl_low'], self.param['spectrum']['wl_high'], self.param['spectrum']['wl']]).T
+        else:
+            temp = self.param['spectrum']['wl'] + 0.0
+        self.param['spectrum']['wl'] = new_wl_central[start:stop]
+        self.param['spectrum']['wl_low'] = new_wl[start:stop, 0]
+        self.param['spectrum']['wl_high'] = new_wl[start:stop, 1]
+
+        samples = np.zeros((len(self.param['spectrum']['wl']), nsample + 1))
+        samples[:, 0] = self.param['spectrum']['wl']
+
+        idx = np.random.choice(mc_samples.shape[0], nsample, replace=False)
+
+        for i in range(0, nsample):
+            out_cube = mc_samples[idx[i], :]
+            self.cube_to_param(out_cube)
+
+            _, samples[:, i + 1] = forward(self.param, retrieval_mode=False)
+
+        np.savetxt(self.param['out_dir'] + 'random_samples.dat', samples)
+
+        if self.param['spectrum']['bins']:
+            self.param['spectrum']['wl'] = temp[:, 2]
+            self.param['spectrum']['wl_low'] = temp[:, 0]
+            self.param['spectrum']['wl_high'] = temp[:, 1]
+        else:
+            self.param['spectrum']['wl'] = temp + 0.0
 
     def plot_posteriors(self, prefix, multinest_results, parameters, mds):
         """
@@ -618,7 +674,7 @@ class MULTINEST:
 
         SQRTEPS = math.sqrt(float(np.finfo(np.float64).eps))
 
-        def _posteriors_clr_to_vmr(param, prefix, modes=None):
+        def _posteriors_clr_to_vmr(prefix, modes=None):
             """
                 Transforms the solutions from centered log-ratio (clr) to volume mixing ratio (vmr) and saves the results.
 
@@ -650,73 +706,81 @@ class MULTINEST:
                 os.system('cp ' + prefix + '.txt ' + prefix + 'original.txt')
                 a = np.loadtxt(prefix + '.txt')
 
-            b = np.ones((len(a[:, 0]), len(a[0, :]) + 2))
-            if param['incl_clouds'] and param['fit_gen_cld']:
+            if self.param['bare_rock']:
+                b = np.ones((len(a[:, 0]), len(a[0, :])))
+            elif len(self.param['fit_molecules']) < 1:
+                b = np.ones((len(a[:, 0]), len(a[0, :]) + 1))
+            else:
+                b = np.ones((len(a[:, 0]), len(a[0, :]) + 2))
+
+            if self.param['incl_clouds'] and self.param['fit_gen_cld']:
                 z = 4
-            elif param['incl_clouds'] and not param['fit_gen_cld']:
+            elif self.param['incl_clouds'] and not self.param['fit_gen_cld']:
                 z = 6
             else:
                 z = 3
-            if param['incl_haze']:
+            if self.param['incl_haze']:
                 z += 2
-            if param['fit_offset']:
-                z += param['n_offsets']
-            if param['fit_T']:
+            if self.param['fit_offset']:
+                z += self.param['n_offsets']
+            if self.param['fit_T']:
                 z += 1
 
             b[:, 0:z] = a[:, 0:z] + 0.0
 
-            if param['fit_offset']:
-                for i in range(0, param['n_offsets']):
+            if self.param['fit_offset']:
+                for i in range(0, self.param['n_offsets']):
                     b[:, 2 + i] *= 1e6             # offsets in ppm
 
-            volume_mixing_ratio = {}
-            if len(param['fit_molecules']) < 1:
-                i = -1
-                volume_mixing_ratio[param['gas_fill']] = 1.0
-                mmm = volume_mixing_ratio[param['gas_fill']] * param['mm'][param['gas_fill']]
-            else:
-                centered_log_ratio = {}
-                mol_indx = z + 0
-                for mol in param['fit_molecules']:
-                    centered_log_ratio[mol] = np.array(a[:, mol_indx])
-                    mol_indx += 1
-                centered_log_ratio[param['gas_fill']] = np.zeros(len(a[:, 0]))
+            if not self.param['bare_rock']:
+                volume_mixing_ratio = {}
+                if len(self.param['fit_molecules']) < 1:
+                    i = -1
+                    volume_mixing_ratio[self.param['gas_fill']] = 1.0
+                    mmm = volume_mixing_ratio[self.param['gas_fill']] * self.param['mm'][self.param['gas_fill']]
+                    b[:, z + i + 1] = np.array(mmm) + 0.0
+                else:
+                    centered_log_ratio = {}
+                    mol_indx = z + 0
+                    for mol in self.param['fit_molecules']:
+                        centered_log_ratio[mol] = np.array(a[:, mol_indx])
+                        mol_indx += 1
+                    centered_log_ratio[self.param['gas_fill']] = np.zeros(len(a[:, 0]))
 
-                sumb = np.zeros(len(a[:, 0]))
-                for mol in param['fit_molecules']:
-                    centered_log_ratio[param['gas_fill']] -= centered_log_ratio[mol]
-                    sumb += np.exp(centered_log_ratio[mol])
-                sumb += np.exp(centered_log_ratio[param['gas_fill']])
+                    sumb = np.zeros(len(a[:, 0]))
+                    for mol in self.param['fit_molecules']:
+                        centered_log_ratio[self.param['gas_fill']] -= centered_log_ratio[mol]
+                        sumb += np.exp(centered_log_ratio[mol])
+                    sumb += np.exp(centered_log_ratio[self.param['gas_fill']])
 
-                for mol in centered_log_ratio.keys():
-                    volume_mixing_ratio[mol] = np.exp(centered_log_ratio[mol]) / sumb
-                del centered_log_ratio, sumb
+                    for mol in centered_log_ratio.keys():
+                        volume_mixing_ratio[mol] = np.exp(centered_log_ratio[mol]) / sumb
+                    del centered_log_ratio, sumb
 
-                mmm = np.zeros(len(a[:, 0]))
-                for mol in volume_mixing_ratio.keys():
-                    mmm += volume_mixing_ratio[mol] * param['mm'][mol]
+                    mmm = np.zeros(len(a[:, 0]))
+                    for mol in volume_mixing_ratio.keys():
+                        mmm += volume_mixing_ratio[mol] * self.param['mm'][mol]
 
-                for i, mol in enumerate(param['fit_molecules']):
-                    b[:, z + i] = np.log10(volume_mixing_ratio[mol])
+                    for i, mol in enumerate(self.param['fit_molecules']):
+                        b[:, z + i] = np.log10(volume_mixing_ratio[mol])
 
-            b[:, z + i + 1] = np.log10(volume_mixing_ratio[param['gas_fill']])
-            b[:, z + i + 2] = np.array(mmm) + 0.0
+                    b[:, z + i + 1] = np.log10(volume_mixing_ratio[self.param['gas_fill']])
+                    b[:, z + i + 2] = np.array(mmm) + 0.0
 
-            if param['incl_star_activity']:
-                if param['fit_het_frac'] and not param['fit_Ts_het'] and not param['fit_Ts_phot']:
+            if self.param['incl_star_activity']:
+                if self.param['fit_het_frac'] and not self.param['fit_Ts_het'] and not self.param['fit_Ts_phot']:
                     num = -1
-                elif param['fit_Ts_het'] and not param['fit_het_frac'] and not param['fit_Ts_phot']:
+                elif self.param['fit_Ts_het'] and not self.param['fit_het_frac'] and not self.param['fit_Ts_phot']:
                     num = -1
-                elif param['fit_Ts_phot'] and not param['fit_het_frac'] and not param['fit_Ts_het']:
+                elif self.param['fit_Ts_phot'] and not self.param['fit_het_frac'] and not self.param['fit_Ts_het']:
                     num = -1
-                elif param['fit_het_frac'] and param['fit_Ts_het'] and not param['fit_Ts_phot']:
+                elif self.param['fit_het_frac'] and self.param['fit_Ts_het'] and not self.param['fit_Ts_phot']:
                     num = -2
-                elif param['fit_het_frac'] and param['fit_Ts_phot'] and not param['fit_Ts_het']:
+                elif self.param['fit_het_frac'] and self.param['fit_Ts_phot'] and not self.param['fit_Ts_het']:
                     num = -2
-                elif param['fit_Ts_het'] and param['fit_Ts_phot'] and not param['fit_het_frac']:
+                elif self.param['fit_Ts_het'] and self.param['fit_Ts_phot'] and not self.param['fit_het_frac']:
                     num = -2
-                elif param['fit_het_frac'] and param['fit_Ts_het'] and param['fit_Ts_phot']:
+                elif self.param['fit_het_frac'] and self.param['fit_Ts_het'] and self.param['fit_Ts_phot']:
                     num = -3
                 b[:, num:] = a[:, num:]
 
@@ -731,61 +795,37 @@ class MULTINEST:
                 os.system('mv ' + prefix + 'params.json ' + prefix + 'params_original.json')
 
             par = []
-            if param['fit_offset']:
-                for i in range(0, param['n_offsets']):
+            if self.param['fit_offset']:
+                for i in range(0, self.param['n_offsets']):
                     par.append("offset$_" + str(i + 1) + "$ [ppm]")
             par.append("R$_p$ [R$_{\oplus}$]")
-            if param['fit_T']:
+            if self.param['fit_T']:
                 par.append("T$_p$")
-            if param['fit_wtr_cld']:
+            if self.param['fit_wtr_cld']:
                 par.append("Log(P$_{top, H_2O}$)")
                 par.append("Log(D$_{H_2O}$)")
                 par.append("Log(CR$_{H_2O}$)")
-            if param['fit_amn_cld']:
+            if self.param['fit_amn_cld']:
                 par.append("Log(P$_{top, NH_3}$)")
                 par.append("Log(D$_{NH_3}$)")
                 par.append("Log(CR$_{NH_3}$)")
-            if param['fit_gen_cld']:
+            if self.param['fit_gen_cld']:
                 par.append("Log(P$_{top}$)")
-            if param['incl_haze']:
+            if self.param['incl_haze']:
                 par.append("Log(d$_{haze}$)")
                 par.append("Log(haze)")
-            for mol in self.param['fit_molecules']:
-                if mol == 'H2O':
-                    par.append("Log(H$_2$O)")
-                if mol == 'CH4':
-                    par.append("Log(CH$_4$)")
-                if mol == 'C2H2':
-                    par.append("Log(C$_2$H$_2$)")
-                if mol == 'C2H4':
-                    par.append("Log(C$_2$H$_4$)")
-                if mol == 'C2H6':
-                    par.append("Log(C$_2$H$_6$)")
-                if mol == 'NH3':
-                    par.append("Log(NH$_3$)")
-                if mol == 'HCN':
-                    par.append("Log(HCN)")
-                if mol == 'H2S':
-                    par.append("Log(H$_2$S)")
-                if mol == 'CO':
-                    par.append("Log(CO)")
-                if mol == 'CO2':
-                    par.append("Log(CO$_2$)")
-                if mol == 'N2':
-                    par.append("Log(N$_2$)")
-            if param['gas_fill'] == 'CO2':
-                par.append("Log(CO$_2$) (derived)")
-            if param['gas_fill'] == 'N2':
-                par.append("Log(N$_2$) (derived)")
-            if param['gas_fill'] == 'H2':
-                par.append("Log(H$_2$) (derived)")
-            par.append("$\mu$ (derived)")
-            if param['incl_star_activity']:
-                if param['fit_het_frac']:
+            if not self.param['bare_rock']:
+                for mol in self.param['fit_molecules']:
+                    par.append(self.param['formatted_labels'][mol])
+                if len(self.param['fit_molecules']) >= 1:
+                    par.append(self.param['formatted_labels'][self.param['gas_fill']] + " (derived)")
+                par.append("$\mu$ (derived)")
+            if self.param['incl_star_activity']:
+                if self.param['fit_het_frac']:
                     par.append("$\delta$")
-                if param['fit_Ts_het']:
+                if self.param['fit_Ts_het']:
                     par.append("$Ts_{het}$")
-                if param['fit_Ts_phot']:
+                if self.param['fit_Ts_phot']:
                     par.append("$Ts_{phot}$")
             json.dump(par, open(prefix + 'params.json', 'w'))
 
@@ -1087,7 +1127,7 @@ class MULTINEST:
                     contour_kwargs=None, contourf_kwargs=None, data_kwargs=None,
                     **kwargs):
             """
-            Internal function called by :meth:`cornerplot` used to generate a
+            Internal function called by :meth:`cornerplot` used to generate
             a 2-D histogram/contour of samples.
 
             Parameters
@@ -1915,23 +1955,26 @@ class MULTINEST:
                     ax.xaxis.set_label_coords(0.5, -0.3)
                 # Generate distribution.
                 sx = smooth[i]
-                if isinstance(sx, int_type):
-                    # If `sx` is an integer, plot a weighted histogram with
-                    # `sx` bins within the provided bounds.
-                    n, b, _ = ax.hist(x, bins=sx, weights=weights, color=color,
-                                      range=np.sort(span[i]), **hist_kwargs)
-                else:
-                    # If `sx` is a float, oversample the data relative to the
-                    # smoothing filter by a factor of 10, then use a Gaussian
-                    # filter to smooth the results.
-                    bins = int(round(10. / sx))
-                    n, b = np.histogram(x, bins=bins, weights=weights,
-                                        range=np.sort(span[i]))
-                    n = norm_kde(n, 10.)
-                    b0 = 0.5 * (b[1:] + b[:-1])
-                    n, b, _ = ax.hist(b0, bins=b, weights=n,
-                                      range=np.sort(span[i]), color=color,
-                                      **hist_kwargs)
+
+                n, b, _ = ax.hist(x, bins=75, weights=weights, color=color, range=np.sort(span[i]), **hist_kwargs)
+
+                # if isinstance(sx, int_type):
+                #     # If `sx` is an integer, plot a weighted histogram with
+                #     # `sx` bins within the provided bounds.
+                #     n, b, _ = ax.hist(x, bins=sx, weights=weights, color=color,
+                #                       range=np.sort(span[i]), **hist_kwargs)
+                # else:
+                #     # If `sx` is a float, oversample the data relative to the
+                #     # smoothing filter by a factor of 10, then use a Gaussian
+                #     # filter to smooth the results.
+                #     bins = int(round(10. / sx))
+                #     n, b = np.histogram(x, bins=bins, weights=weights,
+                #                         range=np.sort(span[i]))
+                #     n = norm_kde(n, 10.)
+                #     b0 = 0.5 * (b[1:] + b[:-1])
+                #     n, b, _ = ax.hist(b0, bins=b, weights=n,
+                #                       range=np.sort(span[i]), color=color,
+                #                       **hist_kwargs)
 
                 if ax.get_ylim()[1] < max(n) * 1.05:
                     ax.set_ylim([0., max(n) * 1.05])
@@ -2045,7 +2088,7 @@ class MULTINEST:
         print('Generating the Posterior Distribution Functions (PDFs) plot')
         if mds < 2:
             nest_out = _store_nest_solutions()
-            _posteriors_clr_to_vmr(self.param, prefix)
+            _posteriors_clr_to_vmr(prefix, modes=None)
 
             data = np.loadtxt(prefix + '.txt')
             i = data[:, 1].argsort()[::-1]
@@ -2085,7 +2128,7 @@ class MULTINEST:
             nest_out = _store_nest_solutions()
             result = {}
             for modes in range(0, mds):
-                _posteriors_clr_to_vmr(self.param, prefix, modes=modes)
+                _posteriors_clr_to_vmr(prefix, modes=modes)
 
                 data = np.loadtxt(prefix + 'solution' + str(modes) + '.txt')
                 i = data[:, 1].argsort()[::-1]

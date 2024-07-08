@@ -1,5 +1,3 @@
-import os
-
 from .__basics import *
 
 
@@ -74,7 +72,7 @@ def take_standard_parameters(pkg_dir):
                             param[paramline[0]] = str(paramline[1])
 
     param['wkg_dir'] = os.getcwd()
-    param['supported_molecules'] = ['H2O', 'CH4', 'C2H2', 'C2H4', 'C2H6', 'NH3', 'HCN', 'H2S', 'CO', 'CO2', 'N2']
+    param['supported_molecules'] = ['H2O', 'CH4', 'C2H2', 'C2H4', 'C2H6', 'NH3', 'HCN', 'H2S', 'SO2', 'CO', 'CO2', 'N2']
 
     for mol in param['supported_molecules']:
         param[mol + '_contribution'] = True
@@ -102,6 +100,34 @@ def take_standard_parameters(pkg_dir):
     mm['N2'] = 2. * mm['N']
 
     param['mm'] = mm
+
+    param['formatted_labels'] = {}
+    param['formatted_labels']['H2'] = "Log(H$_2$)"
+    for mol in param['supported_molecules']:
+        if mol == 'H2O':
+            param['formatted_labels'][mol] = "Log(H$_2$O)"
+        if mol == 'CH4':
+            param['formatted_labels'][mol] = "Log(CH$_4$)"
+        if mol == 'C2H2':
+            param['formatted_labels'][mol] = "Log(C$_2$H$_2$)"
+        if mol == 'C2H4':
+            param['formatted_labels'][mol] = "Log(C$_2$H$_4$)"
+        if mol == 'C2H6':
+            param['formatted_labels'][mol] = "Log(C$_2$H$_6$)"
+        if mol == 'NH3':
+            param['formatted_labels'][mol] = "Log(NH$_3$)"
+        if mol == 'HCN':
+            param['formatted_labels'][mol] = "Log(HCN)"
+        if mol == 'H2S':
+            param['formatted_labels'][mol] = "Log(H$_2$S)"
+        if mol == 'SO2':
+            param['formatted_labels'][mol] = "Log(SO$_2$)"
+        if mol == 'CO':
+            param['formatted_labels'][mol] = "Log(CO)"
+        if mol == 'CO2':
+            param['formatted_labels'][mol] = "Log(CO$_2$)"
+        if mol == 'N2':
+            param['formatted_labels'][mol] = "Log(N$_2$)"
 
     return param
 
@@ -196,11 +222,16 @@ def read_parfile(param, parfile=None):
     if param['gas_fill'] is None:
         param['gas_fill'] = 'H2'
 
-    if param['gas_fill'] == 'N2':
-        param['fit_N2'] = False
+    for mol in param['supported_molecules']:
+        if param['gas_fill'] == mol:
+            param['fit_' + mol] = False
 
-    if param['gas_fill'] == 'CO2':
-        param['fit_CO2'] = False
+    if param['bare_rock']:
+        param['gas_fill'] = None
+        param['incl_clouds'] = False
+        param['incl_haze'] = False
+        for mol in param['supported_molecules']:
+            param['fit_' + mol] = False
 
     if param['incl_clouds']:
         if param['cloud_type'] == 'water':
@@ -419,10 +450,10 @@ def load_input_spectrum(param):
                 param['min_wl'] = min(param['spectrum']['wl_bins'][:, 0])
                 param['max_wl'] = max(param['spectrum']['wl_bins'][:, 1])
 
-            param['spectrum']['wl_low'] = param['spectrum']['wl_bins'][:, 0]
-            param['spectrum']['wl_high'] = param['spectrum']['wl_bins'][:, 1]
+                param['spectrum']['wl_low'] = param['spectrum']['wl_bins'][:, 0]
+                param['spectrum']['wl_high'] = param['spectrum']['wl_bins'][:, 1]
 
-            del param['spectrum']['wl_bins']
+                del param['spectrum']['wl_bins']
 
             if not param['fit_offset']:
                 spec1 = np.loadtxt(param['wkg_dir'] + param['spec1'])
@@ -441,10 +472,12 @@ def load_input_spectrum(param):
             spectrum = np.loadtxt(param['pkg_dir'] + 'Data/wl_bins/' + param['wave_file'] + '.dat')
             param['spectrum'] = {}
             try:
-                param['spectrum']['wl_bins'] = spectrum[:, 0:3]  # wavelength bin_low in micron
-                param['spectrum']['wl'] = spectrum[:, 2]  # wavelength in micron
+                param['spectrum']['wl_bins'] = spectrum + 0.0  # wavelength bins in micron
+                param['spectrum']['wl'] = np.mean(param['spectrum']['wl_bins'], axis=1)  # wavelength in micron
                 param['min_wl'] = min(param['spectrum']['wl_bins'][:, 0])
                 param['max_wl'] = max(param['spectrum']['wl_bins'][:, 1])
+                param['spectrum']['wl_low'] = param['spectrum']['wl_bins'][:, 0]
+                param['spectrum']['wl_high'] = param['spectrum']['wl_bins'][:, 1]
                 param['spectrum']['bins'] = True
             except IndexError:
                 param['spectrum']['wl'] = spectrum
@@ -638,8 +671,12 @@ def ranges(param):
     if param['incl_haze']:
         param['dhaze_range'] = [-3, 2] # diameter of haze particle
         param['vmrhaze_range'] = [-10, -1]
-    if param['fit_T']:
-        param['tp_range'] = [100.0, 500.0]  # Atmospheric equilibrium temperature
+    if param['fit_T'] and param['Tp'] is None:
+        param['tp_range'] = [100.0, 2000.0]  # Atmospheric equilibrium temperature
+    elif param['fit_T'] and param['Tp'] is not None:
+        param['tp_range'] = [min([100.0, param['Tp'] - 500.0]), param['Tp'] + 500.0]  # Atmospheric equilibrium temperature
+    else:
+        pass
     if param['fit_Rp']:
         param['rp_range'] = [param['Rp'] * 0.5, param['Rp'] * 2.0]  # Planetary Radius
     if param['fit_offset']:
@@ -843,7 +880,7 @@ def pre_load_variables(param):
         It specifically excludes certain keys from the MATLAB file that are not related to the opacity data.
         It also initializes the opacity without clouds to zero.
     """
-    data = scipy.io.loadmat(param['pkg_dir'] + 'Data/opac/opac_111923.mat')
+    data = scipy.io.loadmat(param['pkg_dir'] + 'Data/opac/opac_052024.mat')
     opac_data_keys = []
     for i in data.keys():
         if i != '__header__' and i != '__globals__' and i != '__version__':
@@ -978,6 +1015,8 @@ def retrieval_par_and_npar(param):
         parameters.append("clr(HCN)")
     if param['fit_H2S']:
         parameters.append("clr(H$_2$S)")
+    if param['fit_SO2']:
+        parameters.append("clr(SO$_2$)")
     if param['fit_CO']:
         parameters.append("clr(CO)")
     if param['fit_CO2']:

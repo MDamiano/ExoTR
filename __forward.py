@@ -37,13 +37,13 @@ class FORWARD_MODEL:
                 KeyError: If 'Mp' (Mass of Planet) is not provided in self.param.
                 SystemExit: If KeyError is raised, the function stops execution.
         """
-        R0 = self.param['Rp'] * 6378137  # Radius of Planet in meters
+        R0 = self.param['Rp'] * const.R_earth.value  # Radius of Planet in meters
         try:
-            M0 = self.param['Mp'] * 5.9723E+24  # Mass of Planet in kilograms
+            M0 = self.param['Mp'] * const.M_earth.value  # Mass of Planet in kilograms
         except KeyError:
             print('ERROR - This version of the code does not support unknown planetary mass, please specify.')
             sys.exit()
-        RS = self.param['Rs'] * 6.957E+8  # Radius of Star in meters
+        RS = self.param['Rs'] * const.R_sun.value  # Radius of Star in meters
 
         # Atmospheric Profile
         P = np.array([self.param['P'][::-1]]).T
@@ -77,26 +77,13 @@ class FORWARD_MODEL:
 
         # Get molecular opacities
         S = {}
-        for mol in self.param['fit_molecules']:
-            if mol == 'N2':
-                S['N2'] = np.zeros_like(S['H2O'])
-            else:
-                S[mol] = (interpn((self.param['opacp'][0], self.param['opact'][0], self.param['opacw'][0]), self.param['opac' + mol.lower()], np.array([PL * I2, TL * I2, I1 * self.param['opacw'][0]]).T)).T
-        if self.param['gas_fill'] == 'CO2':
-            S['CO2'] = (interpn((self.param['opacp'][0], self.param['opact'][0], self.param['opacw'][0]), self.param['opacco2'], np.array([PL * I2, TL * I2, I1 * self.param['opacw'][0]]).T)).T
         if len(self.param['fit_molecules']) < 1 or 'H2O' not in self.param['fit_molecules']:
             S['H2O'] = (interpn((self.param['opacp'][0], self.param['opact'][0], self.param['opacw'][0]), self.param['opach2o'], np.array([PL * I2, TL * I2, I1 * self.param['opacw'][0]]).T)).T
-        # S['H2O'] = (interpn((self.param['opacp'][0], self.param['opact'][0], self.param['opacw'][0]), self.param['opach2o'], np.array([PL * I2, TL * I2, I1 * self.param['opacw'][0]]).T)).T
-        # S['CH4'] = (interpn((self.param['opacp'][0], self.param['opact'][0], self.param['opacw'][0]), self.param['opacch4'], np.array([PL * I2, TL * I2, I1 * self.param['opacw'][0]]).T)).T
-        # S['C2H2'] = (interpn((self.param['opacp'][0], self.param['opact'][0], self.param['opacw'][0]), self.param['opacc2h2'], np.array([PL * I2, TL * I2, I1 * self.param['opacw'][0]]).T)).T
-        # S['C2H4'] = (interpn((self.param['opacp'][0], self.param['opact'][0], self.param['opacw'][0]), self.param['opacc2h4'], np.array([PL * I2, TL * I2, I1 * self.param['opacw'][0]]).T)).T
-        # S['C2H6'] = (interpn((self.param['opacp'][0], self.param['opact'][0], self.param['opacw'][0]), self.param['opacc2h6'], np.array([PL * I2, TL * I2, I1 * self.param['opacw'][0]]).T)).T
-        # S['NH3'] = (interpn((self.param['opacp'][0], self.param['opact'][0], self.param['opacw'][0]), self.param['opacnh3'], np.array([PL * I2, TL * I2, I1 * self.param['opacw'][0]]).T)).T
-        # S['HCN'] = (interpn((self.param['opacp'][0], self.param['opact'][0], self.param['opacw'][0]), self.param['opachcn'], np.array([PL * I2, TL * I2, I1 * self.param['opacw'][0]]).T)).T
-        # S['H2S'] = (interpn((self.param['opacp'][0], self.param['opact'][0], self.param['opacw'][0]), self.param['opach2s'], np.array([PL * I2, TL * I2, I1 * self.param['opacw'][0]]).T)).T
-        # S['CO'] = (interpn((self.param['opacp'][0], self.param['opact'][0], self.param['opacw'][0]), self.param['opacco'], np.array([PL * I2, TL * I2, I1 * self.param['opacw'][0]]).T)).T
-        # S['CO2'] = (interpn((self.param['opacp'][0], self.param['opact'][0], self.param['opacw'][0]), self.param['opacco2'], np.array([PL * I2, TL * I2, I1 * self.param['opacw'][0]]).T)).T
-        # S['N2'] = np.zeros_like(S['H2O'])
+        for mol in self.param['fit_molecules'] + [self.param['gas_fill']]:
+            if mol == 'N2' or mol == 'H2':
+                S[mol] = np.zeros_like(S['H2O'])
+            else:
+                S[mol] = (interpn((self.param['opacp'][0], self.param['opact'][0], self.param['opacw'][0]), self.param['opac' + mol.lower()], np.array([PL * I2, TL * I2, I1 * self.param['opacw'][0]]).T)).T
 
         op = np.zeros_like(S['H2O'] * (N['H2O'] * I2))
 
@@ -112,7 +99,7 @@ class FORWARD_MODEL:
             op += SR * (NL * I2)
 
         # Opacity of Atmosphere(m^-1)
-        for mol in self.param['fit_molecules']:
+        for mol in self.param['fit_molecules'] + [self.param['gas_fill']]:
             if self.param[mol + '_contribution']:
                 op += S[mol] * (N[mol] * I2)
             else:
@@ -164,7 +151,7 @@ class FORWARD_MODEL:
                 dx = (Z[ip + 1] - Z[ip]) * (R0 + Z[ip]) / np.sqrt((Z[ip] - Z[i]) * (2 * R0 + Z[i] + Z[ip]))
                 ta[i, :] = ta[i, :] + (2.0 * op[i, :] * dx)
 
-        # Aparrent size of Planet
+        # Apparent size of Planet
         sp = (math.pi * (R0 ** 2.0)) + np.zeros_like(w)
         for i in range(1, n - 1):
             # sp += 2 * math.pi * (Z[i + 1] - Z[i]) * (R0 + Z[i]) * (1 - (np.exp(-ta[i]) + np.exp(-ta[i + 1])) / 2)
@@ -180,13 +167,6 @@ class FORWARD_MODEL:
         st_phot = take_star_spectrum(self.param, self.param['Ts_phot'], meta=self.param['meta'])
         stellar_contr = 1.0 / (1.0 - (self.param['st_frac'] * (1.0 - (st_het / st_phot))))
 
-        # plt.plot(self.param['spectrum']['wl'], st_het)
-        # plt.plot(self.param['spectrum']['wl'], st_phot)
-        # plt.show()
-
-        # plt.plot(self.param['spectrum']['wl'], stellar_contr)
-        # plt.show()
-        # sys.exit()
         return stellar_contr
 
 
@@ -214,7 +194,6 @@ def forward(param, evaluation=None, retrieval_mode=True):
     param = copy.deepcopy(param)
 
     if evaluation is not None:
-        clr = {}
         if param['fit_Rp']:
             param['Rp'] = evaluation['Rp']
         if param['fit_T']:
@@ -229,12 +208,14 @@ def forward(param, evaluation=None, retrieval_mode=True):
             param['CR_NH3'] = (10. ** evaluation['crNH3'])
         if param['fit_gen_cld']:
             param['P_top'] = (10. ** evaluation['ptop'])
-        if param['incl_haze']  :
+        if param['incl_haze']:
             param['diam_haze'] = (10. ** evaluation['dhaze'])
             param['vmr_haze'] = (10. ** evaluation['vmrhaze'])
-        for mol in param['fit_molecules']:
-            clr[mol] = evaluation[mol]
-        param = clr_to_vmr(param, clr)
+        if not param['bare_rock']:
+            clr = {}
+            for mol in param['fit_molecules']:
+                clr[mol] = evaluation[mol]
+            param = clr_to_vmr(param, clr)
         if param['fit_het_frac']:
             param['st_frac'] = evaluation['st_frac']
         if param['fit_Ts_het']:
@@ -242,17 +223,22 @@ def forward(param, evaluation=None, retrieval_mode=True):
         if param['fit_Ts_phot']:
             param['Ts_phot'] = evaluation['Ts_phot']
 
-    param = cloud_pos(param)
-    param = calc_mean_mol_mass(param)
-    mod = FORWARD_MODEL(param)
-    wl, trans = mod.atmospheric_structure()
+    if not param['bare_rock']:
+        param = cloud_pos(param)
+        param = calc_mean_mol_mass(param)
+        mod = FORWARD_MODEL(param)
+        wl, trans = mod.atmospheric_structure()
 
-    if param['spectrum']['bins']:
-        model = custom_spectral_binning(np.array([param['spectrum']['wl_low'], param['spectrum']['wl_high'], param['spectrum']['wl']]).T, wl, trans, bins=param['spectrum']['bins'])
+        if param['spectrum']['bins']:
+            model = custom_spectral_binning(np.array([param['spectrum']['wl_low'], param['spectrum']['wl_high'], param['spectrum']['wl']]).T, wl, trans, bins=param['spectrum']['bins'])
+        else:
+            model = custom_spectral_binning(param['spectrum']['wl'], wl, trans, bins=param['spectrum']['bins'])
     else:
-        model = custom_spectral_binning(param['spectrum']['wl'], wl, trans, bins=param['spectrum']['bins'])
+        model = np.ones(len(param['spectrum']['wl'])) * (((param['Rp'] * const.R_earth.value) / (param['Rs'] * const.R_sun.value)) ** 2.)
 
     if param['incl_star_activity'] and param['star_act_contribution']:
+        if param['bare_rock']:
+            mod = FORWARD_MODEL(param)
         star_act = mod.stellar_activity()
         model = model * star_act
 
