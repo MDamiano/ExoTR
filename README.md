@@ -26,7 +26,7 @@ Therefore, make the folder searchable for python in your `.bash_profile` or `.ba
 
 `export PYTHONPATH="$PYTHONPATH:/full/path/of/folder/containing/ExoTR:"`
 
-Download the folder "Data" from the following link : [Google Drive](https://drive.google.com/drive/folders/14YAmFzC_N8mP1l3LdpMZkKp01Gr6CMCJ?usp=sharing) .
+Download the folder "Data" from the following link : [Google Drive](https://drive.google.com/drive/folders/1yXtKIHfsHfCrS9kJef0ycjK1zOvz2vXx) .
 Place the downloaded "Data" folder inside the ExoTR folder.
 
 ## Usage
