@@ -2,25 +2,32 @@
 Rs				                    None
 Ms                                  None
 Loggs                               None
+meta                                None
 Ts			                        None
 Ts_err                              None
-meta                                None
 Ts_het                              None
-st_frac                             None
+het_frac                            None
+Ts_spot                             None
+spot_frac                           None
+Ts_fac                              None
+fac_frac                            None
 
 %   [PLANET]  %
 name_p                              None
 major-a                             None
 Rp                                  None
-Mp                                  None
 eccentricity                        None
 inclination                         90.0
+Tp                                  None
 
 %   [MODEL_PAR]     %
 % fit planetary radius
 fit_Rp                              True
+fit_Mp                              False
+bare_rock                           False
 % fit planetary temperature
 fit_T                               False
+TP_profile                          None
 % fit molecules
 fit_H2O                             False
 fit_CH4                             False
@@ -30,11 +37,15 @@ fit_C2H6                            False
 fit_NH3                             False
 fit_HCN                             False
 fit_H2S                             False
+fit_SO2                             False
 fit_CO                              False
 fit_CO2                             False
+fit_N2O                             False
 fit_N2                              False
+fit_H2                              False
 % gas filling
 gas_fill                            None
+
 % cloud parameters
 incl_clouds                         None
 cloud_type                          None
@@ -42,30 +53,40 @@ cloud_type                          None
 % haze parameters
 incl_haze                           False
 
-% fit gravity
-fit_g                               False
+% fit for star activity
+incl_star_activity                  False
+stellar_activity_parameters         5
 
 % fit for offsets betweeen different observations. Offset range in ppm.
 fit_offset                          False
 offset_range                        100
 
-% fit for star activity
-incl_star_activity                  False
-fit_het_frac                        False
-fit_Ts_het                          False
-fit_Ts_phot                         False
-
+modified_clr_prior                  True
 optimizer                           None
 
 %   [MultiNest]     %
 multimodal                          True
 max_modes                           100
-ev_tolerance                        0.5
 nlive_p                             600
+ev_tolerance                        0.5
 multinest_resume                    True
 multinest_verbose                   False
 
+%   [Dynesty]     %
+bound                               multi
+dlogz_init                          0.1
+nlive_init                          250
+nlive_batch                         250
+pfrac                               1.0
+use_stop                            False
+dynesty_resume                      False
+
+%   [elpdLoo_calculation]   %
+calc_likelihood_data                False
+n_likelihood_data                   10240
+
 %   [Plotting_Options]     %
+plot_models                         False
 plot_posterior                      False
 truths                              None
 

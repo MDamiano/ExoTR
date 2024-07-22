@@ -72,7 +72,7 @@ def take_standard_parameters(pkg_dir):
                             param[paramline[0]] = str(paramline[1])
 
     param['wkg_dir'] = os.getcwd()
-    param['supported_molecules'] = ['H2O', 'CH4', 'C2H2', 'C2H4', 'C2H6', 'NH3', 'HCN', 'H2S', 'SO2', 'CO', 'CO2', 'N2']
+    param['supported_molecules'] = ['H2O', 'CH4', 'C2H2', 'C2H4', 'C2H6', 'NH3', 'HCN', 'H2S', 'SO2', 'CO', 'CO2', 'N2O', 'N2', 'H2']
 
     for mol in param['supported_molecules']:
         param[mol + '_contribution'] = True
@@ -95,6 +95,7 @@ def take_standard_parameters(pkg_dir):
     mm['SO2'] = mm['S'] + (2. * mm['O'])
     mm['CO'] = mm['C'] + mm['O']
     mm['CO2'] = mm['C'] + (2. * mm['O'])
+    mm['N2O'] = (2. * mm['N']) + mm['O']
     mm['O2'] = 2. * mm['O']
     mm['O3'] = 3. * mm['O']
     mm['N2'] = 2. * mm['N']
@@ -102,7 +103,6 @@ def take_standard_parameters(pkg_dir):
     param['mm'] = mm
 
     param['formatted_labels'] = {}
-    param['formatted_labels']['H2'] = "Log(H$_2$)"
     for mol in param['supported_molecules']:
         if mol == 'H2O':
             param['formatted_labels'][mol] = "Log(H$_2$O)"
@@ -126,8 +126,12 @@ def take_standard_parameters(pkg_dir):
             param['formatted_labels'][mol] = "Log(CO)"
         if mol == 'CO2':
             param['formatted_labels'][mol] = "Log(CO$_2$)"
+        if mol == 'N2O':
+            param['formatted_labels'][mol] = "Log(N$_2$O)"
         if mol == 'N2':
             param['formatted_labels'][mol] = "Log(N$_2$)"
+        if mol == 'H2':
+            param['formatted_labels'][mol] = "Log(H$_2$)"
 
     return param
 
@@ -219,6 +223,37 @@ def read_parfile(param, parfile=None):
 
     os.system('cp ' + cwd + '/' + parfile + ' ' + param['out_dir'])
 
+    if not param['fit_Mp']:
+        try:
+            param['Mp'] += 0.0
+        except KeyError:
+            print('ERROR - Please specify the planetary mass by using "Mp" key in the parameter file.')
+            sys.exit()
+    else:
+        try:
+            param['Mp'] += 0.0
+        except KeyError and TypeError:
+            if param['Mp'] is None:
+                pass
+            else:
+                print('ERROR - Please specify the planetary mass or set it to None in the parameter file; use "Mp" as key.')
+                sys.exit()
+
+        if param['Mp'] is None:
+            param['Mp_prior'] = 'uniform'
+        else:
+            try:
+                param['Mp'] += 0.0
+                param['Mp_err'] += 0.0
+                param['Mp_orig'] = param['Mp'] + 0.0
+                param['Mp_prior'] = 'gaussian'
+            except KeyError:
+                print('ERROR - Please specify the planetary mass ("Mp") and the associated errorbar ("Mp_err") to use a gaussian distribution. Otherwise, set "Mp" to "None" to use a uniform distribution.')
+                sys.exit()
+
+    if param['TP_profile'] is not None:
+        param['TP_profile'] = np.loadtxt(param['TP_profile'])
+
     if param['gas_fill'] is None:
         param['gas_fill'] = 'H2'
 
@@ -291,10 +326,9 @@ def read_parfile(param, parfile=None):
             try:
                 param['Ts_phot'] += 0.0
             except KeyError:
-                param['Ts_phot'] = param['Ts']
+                param['Ts_phot'] = param['Ts'] + 0.0
 
-        if not param['fit_Ts_phot']:
-            param['Ts_phot'] = param['Ts']
+        param['stellar_activity_parameters'] = int(param['stellar_activity_parameters'])
 
         if param['meta'] is None:
             param['meta'] = 0.0
@@ -318,13 +352,47 @@ def par_and_calc(param):
         Returns:
             dict: The updated dictionary with modified and added parameters.
     """
+    def add_boundary_knots(spline):
+        """
+        Add knots infinitesimally to the left and right.
+
+        Additional intervals are added to have zero 2nd and 3rd derivatives,
+        and to maintain the first derivative from whatever boundary condition
+        was selected. The spline is modified in place.
+        """
+        # determine the slope at the left edge
+        leftx = spline.x[0]
+        lefty = spline(leftx)
+        leftslope = spline(leftx, nu=1)
+
+        # add a new breakpoint just to the left and use the
+        # known slope to construct the PPoly coefficients.
+        leftxnext = np.nextafter(leftx, leftx - 1)
+        leftynext = lefty + leftslope * (leftxnext - leftx)
+        leftcoeffs = np.array([0, 0, leftslope, leftynext])
+        spline.extend(leftcoeffs[..., None], np.r_[leftxnext])
+
+        # repeat with additional knots to the right
+        rightx = spline.x[-1]
+        righty = spline(rightx)
+        rightslope = spline(rightx, nu=1)
+        rightxnext = np.nextafter(rightx, rightx + 1)
+        rightynext = righty + rightslope * (rightxnext - rightx)
+        rightcoeffs = np.array([0, 0, rightslope, rightynext])
+        spline.extend(rightcoeffs[..., None], np.r_[rightxnext])
+
     # planet
-    if not param['fit_T']:
+    if not param['fit_T'] and param['TP_profile'] is None:
         try:
             param['Tp'] += 0.0
-        except KeyError:
+        except TypeError:
             t1 = ((param['Rs'] * const.R_sun) / (2. * param['major-a'] * const.au)) ** 0.5
             param['Tp'] = t1 * ((1 - 0.3) ** 0.25) * param['Ts']
+
+    if param['TP_profile'] is not None:
+        tp_prof = param['TP_profile'] + 0.0
+        param['TP_profile'] = CubicSpline(tp_prof[:, 1], tp_prof[:, 0], bc_type='natural')
+        add_boundary_knots(param['TP_profile'])
 
     param['P_standard'] = 10. ** np.arange(-1.0, 12.1, step=0.1)
     param['P'] = 10. ** np.arange(-1.0, 8.1, step=0.1)
@@ -406,6 +474,7 @@ def load_input_spectrum(param):
             param['spectrum']['wl'] = spectrum[:, wl_idx]  # wavelength in micron
             param['spectrum']['T_depth'] = spectrum[:, wl_idx + 1]  # Transit depth
             param['spectrum']['error_T'] = spectrum[:, wl_idx + 2]  # error on Transit depth
+            param['sorted_data_idx'] = np.argsort(param['spectrum']['wl'])
             multi_spec_mode = False
         except KeyError:
             try:
@@ -452,6 +521,9 @@ def load_input_spectrum(param):
 
                 param['spectrum']['wl_low'] = param['spectrum']['wl_bins'][:, 0]
                 param['spectrum']['wl_high'] = param['spectrum']['wl_bins'][:, 1]
+
+                # if not all(param['spectrum']['wl'][i] <= param['spectrum']['wl'][i+1] for i in range(len(param['spectrum']['wl']) - 1)):
+                param['sorted_data_idx'] = np.argsort(param['spectrum']['wl'])
 
                 del param['spectrum']['wl_bins']
 
@@ -640,7 +712,7 @@ def cloud_pos(param):
     else:
         watermix = np.ones((len(param['P']))) * param['vmr_H2O']
 
-    param['vmr_H2O'] = gaussian_filter1d(watermix, 1, mode='nearest')
+    param['vmr_H2O'] = watermix + 0.0
     return param
 
 
@@ -669,38 +741,85 @@ def ranges(param):
     if param['fit_gen_cld']:
         param['ptop_range'] = [0.0, 9.0]  # Top pressure
     if param['incl_haze']:
-        param['dhaze_range'] = [-3, 2] # diameter of haze particle
+        param['dhaze_range'] = [-3, 2]  # diameter of haze particle
         param['vmrhaze_range'] = [-10, -1]
-    if param['fit_T'] and param['Tp'] is None:
+    if param['fit_T'] and param['Tp'] is None and param['TP_profile'] is None:
         param['tp_range'] = [100.0, 2000.0]  # Atmospheric equilibrium temperature
+    elif param['fit_T'] and param['Tp'] is None and param['TP_profile'] is not None:
+        param['tp_range'] = [-300.0, 300.0]
     elif param['fit_T'] and param['Tp'] is not None:
-        param['tp_range'] = [min([100.0, param['Tp'] - 500.0]), param['Tp'] + 500.0]  # Atmospheric equilibrium temperature
-    else:
-        pass
+        param['tp_range'] = [max([100.0, param['Tp'] - 500.0]), param['Tp'] + 500.0]  # Atmospheric equilibrium temperature
+    if len(param['fit_molecules']) > 0 and not param['modified_clr_prior']:
+        param['gas_clr_range'] = [-25, 25]  # Centered-log-ratio standard range
     if param['fit_Rp']:
         param['rp_range'] = [param['Rp'] * 0.5, param['Rp'] * 2.0]  # Planetary Radius
+    if param['fit_Mp']:
+        param['mp_range'] = [0.01, 10.0]  # Planetary Mass
     if param['fit_offset']:
         for i in range(0, param['n_offsets']):
             param['off' + str(i + 1) + '_range'] = [-param['offset_range'] / 1e6, param['offset_range'] / 1e6]
     if param['incl_star_activity']:
-        if param['fit_het_frac']:
-            param['delta_range'] = [0.0, 0.5]  # Fraction of the star surface affected by activity
-        if param['fit_Ts_phot']:
-            param['Ts_phot_range'] = [1000, 10000]
+        param['delta_range'] = [0.0, 0.5]  # Fraction of the star surface affected by activity
+        param['Ts_phot_range'] = [1000, 10000]
+        if param['stellar_activity_parameters'] == int(3):
+            param['Ts_het_range'] = [2300, 1.2 * param['Ts']]
 
     return param
+
+
+def define_modified_clr_prior(ngas):
+    def linear_to_clr(x):
+        """Transformation to the center log ratio space"""
+        n = x.size
+        gx = (np.prod(x)) ** (1 / n)
+        clr = np.log(x / gx)
+        return clr
+
+    def uniform_distribution_to_clr(ng, fmin=1e-12, ns=int(1e6)):
+        """generate a center log ratio distrubtion, corresponding to the log-uniform distribution of [fmin, 1]"""
+        # generate uniform distributions in log space between 1e-12 and 1
+        uniform_sample = 10.0 ** np.random.uniform(low=np.log10(fmin), high=0, size=(ns, ng))
+        # only use samples which sum to less than 1
+        inds = np.where(np.sum(uniform_sample, axis=1) <= 1)[0]
+
+        filler = 10 ** 0 - np.sum(uniform_sample[inds, :], axis=1)
+        filler = np.reshape(filler, (len(filler), 1))
+        gases = np.append(uniform_sample[inds, :], filler, axis=1)
+
+        # gases = uniform_sample[inds,:]
+        nsg = gases.shape[0]
+
+        # apply CLR transformation to all sets of gases
+        clr = np.empty(gases.shape)
+        for i in range(nsg):
+            clr[i, :] = linear_to_clr(gases[i, :])
+
+        # we return only one prior, as all should be identical
+        return clr[:, 0]
+
+    clr = uniform_distribution_to_clr(ngas)
+    counts, bins = np.histogram(clr, bins=int(1e4), density=True)
+    bns = np.concatenate((np.array([bins[:-1]]).T, np.array([bins[1:]]).T), axis=1)
+    cdf = np.cumsum(counts * (bns[:, 1] - bns[:, 0]))
+    cdf[0] = 0.0
+    cdf[-1] = 1.0
+    bnss = np.mean(bns, axis=1)
+    ppf = interp1d(cdf, bnss)
+
+    return ppf
 
 
 def take_star_spectrum(param, Ts, meta=None):
     # PHOENIX STELLAR SPECTRA FROM : http://svo2.cab.inta-csic.es/theory/newov2/index.php
 
-    def resize(fl):
-        idx_start = find_nearest(fl[:, 0] * (10. ** -4.), param['min_wl'])
-        idx_stop = find_nearest(fl[:, 0] * (10. ** -4.), param['max_wl'])
-        if param['spectrum']['bins']:
-            return custom_spectral_binning(np.array([param['spectrum']['wl_low'], param['spectrum']['wl_high'], param['spectrum']['wl']]).T, fl[idx_start:idx_stop, 0] * (10. ** -4.), fl[idx_start:idx_stop, 1], bins=True)
+    def resize(fl, final=False):
+        wl_temp = reso_range(0.85 * param['min_wl'], 1.1 * param['max_wl'], res=20000, bins=False)
+        if not final:
+            idx_start = find_nearest(fl[:, 0] * (10. ** -4.), 0.8 * param['min_wl'])
+            idx_stop = find_nearest(fl[:, 0] * (10. ** -4.), 1.15 * param['max_wl'])
+            return spectres(wl_temp, fl[idx_start:idx_stop, 0] * (10. ** -4.), fl[idx_start:idx_stop, 1], fill=False)
         else:
-            return custom_spectral_binning(param['spectrum']['wl'], fl[idx_start:idx_stop, 0] * (10. ** -4.), fl[idx_start:idx_stop, 1])
+            return spectres(param['spectrum']['wl'][param['sorted_data_idx']], wl_temp, fl, fill=False)
 
     directory = param['pkg_dir'] + 'PHOENIX_models/'
     t_star = round(float(Ts), -2)
@@ -833,7 +952,7 @@ def take_star_spectrum(param, Ts, meta=None):
     # plt.plot(s_files['A'][:, 0] * (10. ** -4.), s_files['A'][:, 1])
 
     for s_keys in s_files.keys():
-        s_files[s_keys] = resize(s_files[s_keys])
+        s_files[s_keys] = resize(s_files[s_keys], final=False)
 
     if interp_Ts and interp_loggs and interp_meta:
         sp = s_meta1_ratio * (loggs1_ratio * (t_star1_ratio * s_files['A'] + t_star2_ratio * s_files['B']) + loggs2_ratio * (t_star1_ratio * s_files['C'] + t_star2_ratio * s_files['D'])) + \
@@ -863,7 +982,7 @@ def take_star_spectrum(param, Ts, meta=None):
     # plt.ylim([0.0, 500000])
     # plt.show()
 
-    return sp
+    return resize(sp, final=True)
 
 
 def pre_load_variables(param):
@@ -880,7 +999,7 @@ def pre_load_variables(param):
         It specifically excludes certain keys from the MATLAB file that are not related to the opacity data.
         It also initializes the opacity without clouds to zero.
     """
-    data = scipy.io.loadmat(param['pkg_dir'] + 'Data/opac/opac_052024.mat')
+    data = scipy.io.loadmat(param['pkg_dir'] + 'Data/opac/opac_072024.mat')
     opac_data_keys = []
     for i in data.keys():
         if i != '__header__' and i != '__globals__' and i != '__version__':
@@ -895,73 +1014,20 @@ def pre_load_variables(param):
     return param
 
 
-def custom_spectral_binning(x, wl, model, err=None, bins=False):
-    """
-        Applies custom spectral binning to a model spectrum based on the given wavelength grid.
+def reso_range(start, finish, res, bins=False):
+    wl_low = [start]
+    res = 1. / res
+    wl_high = [start + (start * res)]
+    while wl_high[-1] < finish:
+        wl_low.append(wl_high[-1])
+        wl_high.append(wl_low[-1] + (wl_low[-1] * res))
 
-        Parameters:
-        x (np.array): An array of wavelengths at which the model is to be binned.
-        wl (np.array): An array of the original wavelengths of the model.
-        model (np.array): An array representing the spectrum of the model.
-        err (np.array, optional): An array representing the error associated with each point in the spectrum.
-                                  Default is None.
-
-        Returns:
-        np.array: The binned model spectrum.
-                  If `err` is not None, also returns an array of the binned errors.
-
-        The function applies a custom binning scheme to the input model spectrum based on the input wavelength grid (`x`).
-        If the error array (`err`) is provided, the function also applies the same binning scheme to the errors and returns
-        the binned error array.
-    """
-    binned_mod = []
-    if err is not None:
-        binned_er = []
+    bns = np.array([wl_low, wl_high]).T
 
     if not bins:
-        y = np.roll(x, 1) + 0.0
-        dx = (x - y)[1:]
-        limits = []
-
-        i, intermed = 0, 0
-        while i in range(0, len(dx)):
-            if dx[i] == dx[0]:
-                lim = (dx[i] / 2., dx[i] / 2.)
-                limits.append(lim)
-            elif dx[i] > 2 * np.median(dx[intermed:i]):
-                lim = (dx[i - 1] / 2., dx[i - 1] / 2.)
-                limits.append(lim)
-                i += 1
-                if i != len(dx):
-                    lim = (dx[i] / 2., dx[i] / 2.)
-                    limits.append(lim)
-                    intermed = i + 1
-                else:
-                    break
-            else:
-                lim = (dx[i - 1] / 2., dx[i] / 2.)
-                limits.append(lim)
-            i += 1
-        limits.append((dx[i - 1] / 2., dx[i - 1] / 2.))
-
-        for i in range(0, len(x)):
-            yy = np.array(model[np.where((wl > x[i] - limits[i][0]) & (wl < x[i] + limits[i][1]))[0]])
-            binned_mod.append(np.mean(yy))
-            if err is not None:
-                er = np.array(err[np.where((wl > x[i] - limits[i][0]) & (wl < x[i] + limits[i][1]))[0]])
-                binned_er.append(np.sqrt(np.sum(er ** 2.)) / len(er))
+        return np.mean(bns, axis=1)
     else:
-        for i in range(0, len(x[:, 0])):
-            yy = np.array(model[np.where((wl > x[i, 0]) & (wl < x[i, 1]))[0]])
-            binned_mod.append(np.mean(yy))
-            if err is not None:
-                er = np.array(err[np.where((wl > x[i, 0]) & (wl < x[i, 1]))[0]])
-                binned_er.append(np.sqrt(np.sum(er ** 2.)) / len(er))
-
-    if err is None:
-        return np.array(binned_mod)
-    else:
-        return np.array(binned_mod), np.array(binned_er)
+        return bns
 
 
 def retrieval_par_and_npar(param):
@@ -984,8 +1050,12 @@ def retrieval_par_and_npar(param):
             parameters.append("offset$_" + str(i + 1) + "$")
     if param['fit_Rp']:
         parameters.append("R$_p$")
-    if param['fit_T']:
-        parameters.append("Log(T$_p$)")
+    if param['fit_Mp']:
+        parameters.append("M$_p$")
+    if param['fit_T'] and param['TP_profile'] is None:
+        parameters.append("T$_p$")
+    elif param['fit_T'] and param['TP_profile'] is not None:
+        parameters.append("$\Delta$T$_p$")
     if param['fit_wtr_cld']:
         parameters.append("Log(P$_{top, H_2O}$)")
         parameters.append("Log(D$_{H_2O}$)")
@@ -1021,14 +1091,20 @@ def retrieval_par_and_npar(param):
         parameters.append("clr(CO)")
     if param['fit_CO2']:
         parameters.append("clr(CO$_2$)")
+    if param['fit_N2O']:
+        parameters.append("clr(N$_2$O)")
     if param['fit_N2']:
         parameters.append("clr(N$_2$)")
     if param['incl_star_activity']:
-        if param['fit_het_frac']:
-            parameters.append("$\delta$")
-        if param['fit_Ts_het']:
+        if param['stellar_activity_parameters'] == int(3):
+            parameters.append("$\delta$" + "$_{het}$")
             parameters.append("T$_{het}$")
-        if param['fit_Ts_phot']:
+            parameters.append("T$_{phot}$")
+        elif param['stellar_activity_parameters'] == int(5):
+            parameters.append("$\delta$" + "$_{spot}$")
+            parameters.append("$\delta$" + "$_{fac}$")
+            parameters.append("T$_{spot}$")
+            parameters.append("T$_{fac}$")
             parameters.append("T$_{phot}$")
 
     return parameters, len(parameters)
@@ -1065,144 +1141,6 @@ def clr_to_vmr(param, clr):
     param['vmr_' + param['gas_fill']] = np.exp(clr[param['gas_fill']]) / sumb
 
     return param
-
-
-def plot_chemistry(param, cube, solutions=None):
-    """
-        Plots the vertical distribution of molecular volume mixing ratios and mean molecular weight.
-
-        Parameters:
-        param (dict): Dictionary of parameters containing information about the model's state and parameters.
-        cube (np.array): An array with model parameters, to be updated in `param`.
-        solutions (int, optional): Identifier for a specific solution to be labeled in the plot's file name.
-                                   Default is None.
-
-        This function generates two plots:
-        1. Vertical distribution of molecular volume mixing ratios (VMRs) for different species. The y-axis represents pressure,
-           and the x-axis represents VMR. Water, ammonia, and optically thick clouds are highlighted with dashed lines, if present.
-        2. Vertical distribution of mean molecular weight (MMM). The y-axis represents pressure,
-           and the x-axis represents MMM. Water, ammonia, and optically thick clouds are highlighted with dashed lines, if present.
-
-        Both plots are saved to the directory specified in `param['out_dir']`, with filenames based on whether `solutions` is provided.
-    """
-    clr = {}
-    par = 0
-    if param['fit_offset']:
-        for i in range(0, param['n_offsets']):
-            param['offset' + str(i + 1)] = cube[par]  # offset between datasets
-            par += 1
-    if param['fit_Rp']:
-        param['Rp'] = cube[par]
-        par += 1
-    if param['fit_T']:
-        param['Tp'] = cube[par]
-        par += 1
-    if param['fit_wtr_cld']:
-        param['Pw_top'] = (10. ** cube[par])
-        param['cldw_depth'] = (10. ** cube[par + 1])
-        param['CR_H2O'] = (10. ** cube[par + 2])
-        par += 3
-    if param['fit_amn_cld']:
-        param['Pa_top'] = (10. ** cube[par])
-        param['clda_depth'] = (10. ** cube[par + 1])
-        param['CR_NH3'] = (10. ** cube[par + 2])
-        par += 3
-    if param['fit_gen_cld']:
-        param['P_top'] = (10. ** cube[par])
-        par += 1
-
-    for mol in param['fit_molecules']:
-        clr[mol] = cube[par]  # Molecules
-        par += 1
-
-    param = clr_to_vmr(param, clr)
-    param = cloud_pos(param)
-    param = calc_mean_mol_mass(param)
-
-    fig, ax = plt.subplots()
-
-    for mol in param['fit_molecules']:
-        if mol != 'H2O':
-            print(str(mol) + ' -> Top: ' + str((param['vmr_' + mol] * np.ones(len(param['P'])))[0]) + ', Bottom: ' + str((param['vmr_' + mol] * np.ones(len(param['P'])))[-1]))
-            ax.loglog(param['vmr_' + mol] * np.ones(len(param['P'])), param['P'], label=mol)
-        else:
-            print(str(mol) + ' -> Top: ' + str(param['vmr_' + mol][0]) + ', Bottom: ' + str(param['vmr_' + mol][-1]))
-            ax.loglog(param['vmr_' + mol], param['P'], label=mol)
-    print(str(param['gas_fill']) + ' -> Top: ' + str((param['vmr_' + param['gas_fill']] * np.ones(len(param['P'])))[0]) + ', Bottom: ' + str((param['vmr_' + param['gas_fill']] * np.ones(len(param['P'])))[-1]))
-    ax.loglog(param['vmr_' + param['gas_fill']] * np.ones(len(param['P'])), param['P'], label=param['gas_fill'])
-
-    ax.set_ylim((param['P'][0], 10. ** 8.))
-    ax.set_xlim((1e-18, 1.5))
-    plt.gca().invert_yaxis()
-    ax.set_xlabel('Molecular VMR')
-    ax.set_ylabel('Pressure [Pa]')
-
-    def pa_to_bar(y):
-        return y / (10. ** 5.)
-
-    def bar_to_pa(y):
-        return y * (10. ** 5.)
-
-    if param['fit_wtr_cld']:
-        wtr2 = param['vmr_H2O'] - np.roll(param['vmr_H2O'], 1)
-        wtr2[0] = 0.0
-        plt.hlines(param['P'][min(np.where(wtr2 != 0.0)[0]) - 1], ax.get_xlim()[0], ax.get_xlim()[1], linestyle='--', color='black', label='H$_2$O cloud')
-        plt.hlines(param['P'][max(np.where(wtr2 != 0.0)[0])], ax.get_xlim()[0], ax.get_xlim()[1], linestyle='--', color='black')
-    if param['fit_amn_cld']:
-        wtr2 = param['vmr_NH3'] - np.roll(param['vmr_NH3'], 1)
-        wtr2[0] = 0.0
-        plt.hlines(param['P'][min(np.where(wtr2 != 0.0)[0]) - 1], ax.get_xlim()[0], ax.get_xlim()[1], linestyle='--', color='black', label='NH$_3$ cloud')
-        plt.hlines(param['P'][max(np.where(wtr2 != 0.0)[0])], ax.get_xlim()[0], ax.get_xlim()[1], linestyle='--', color='black')
-    if param['fit_gen_cld']:
-        indx = find_nearest(param['P'], param['P_top'])
-        plt.hlines(param['P'][indx], ax.get_xlim()[0], ax.get_xlim()[1], linestyle='--', color='black', label='Optically thick cloud')
-
-    ax.yaxis.set_ticks(10. ** np.arange(np.log10(param['P'][0]), 9, 1))
-    secax_y = ax.secondary_yaxis('right', functions=(pa_to_bar, bar_to_pa))
-    secax_y.set_ylabel('Pressure [bar]')
-
-    ax.legend(loc='lower left')
-    if solutions is None:
-        plt.savefig(param['out_dir'] + 'Chemistry.pdf')
-        plt.savefig(param['out_dir'] + 'Chemistry.png')
-    else:
-        plt.savefig(param['out_dir'] + 'Chemistry (solution ' + str(solutions) + ').pdf')
-        plt.savefig(param['out_dir'] + 'Chemistry (solution ' + str(solutions) + ').png')
-    plt.close()
-
-    fig, ax = plt.subplots()
-    ax.semilogy(param['mean_mol_weight'], param['P'])
-    ax.set_ylim((param['P'][0], 10. ** 8.))
-    plt.gca().invert_yaxis()
-    ax.set_xlabel('Mean molecular weight')
-    ax.set_ylabel('Pressure [Pa]')
-
-    ax.set_xlim((ax.get_xlim()[0], ax.get_xlim()[1]))
-
-    if param['fit_wtr_cld']:
-        wtr2 = param['vmr_H2O'] - np.roll(param['vmr_H2O'], 1)
-        wtr2[0] = 0.0
-        plt.hlines(param['P'][min(np.where(wtr2 != 0.0)[0]) - 1], ax.get_xlim()[0], ax.get_xlim()[1], linestyle='--', color='black', label='H$_2$O cloud')
-        plt.hlines(param['P'][max(np.where(wtr2 != 0.0)[0])], ax.get_xlim()[0], ax.get_xlim()[1], linestyle='--', color='black')
-    if param['fit_amn_cld']:
-        wtr2 = param['vmr_NH3'] - np.roll(param['vmr_NH3'], 1)
-        wtr2[0] = 0.0
-        plt.hlines(param['P'][min(np.where(wtr2 != 0.0)[0]) - 1], ax.get_xlim()[0], ax.get_xlim()[1], linestyle='--', color='black', label='NH$_3$ cloud')
-        plt.hlines(param['P'][max(np.where(wtr2 != 0.0)[0])], ax.get_xlim()[0], ax.get_xlim()[1], linestyle='--', color='black')
-    if param['fit_gen_cld']:
-        indx = find_nearest(param['P'], param['P_top'])
-        plt.hlines(param['P'][indx], ax.get_xlim()[0], ax.get_xlim()[1], linestyle='--', color='black', label='Optically thick cloud')
-
-    ax.yaxis.set_ticks(10. ** np.arange(np.log10(param['P'][0]), 9, 1))
-    secax_y = ax.secondary_yaxis('right', functions=(pa_to_bar, bar_to_pa))
-    secax_y.set_ylabel('Pressure [bar]')
-    if solutions is None:
-        plt.savefig(param['out_dir'] + 'MMM.pdf')
-        plt.savefig(param['out_dir'] + 'MMM.png')
-    else:
-        plt.savefig(param['out_dir'] + 'MMM (solution ' + str(solutions) + ').pdf')
-        plt.savefig(param['out_dir'] + 'MMM (solution ' + str(solutions) + ').png')
-    plt.close()
 
 
 def add_noise(param, data):
@@ -1284,32 +1222,37 @@ def elapsed(t):
                 if hours / 24. > 1:
                     days = int(hours / 24.)
                     hours = int(hours - (days * 24.))
-                    print('Runtime : ' + str(days) + ' days, ' + str(hours) + ' hours, ' + str(
+                    print('ExoTR runtime : ' + str(days) + ' days, ' + str(hours) + ' hours, ' + str(
                         minutes) + ' minutes, and ' + str(seconds) + ' seconds')
                 else:
-                    print('Runtime : ' + str(hours) + ' hours, ' + str(minutes) + ' minutes, and ' + str(
+                    print('ExoTR runtime : ' + str(hours) + ' hours, ' + str(minutes) + ' minutes, and ' + str(
                         seconds) + ' seconds')
             else:
-                print('Runtime : ' + str(minutes) + ' minutes and ' + str(seconds) + ' seconds')
+                print('ExoTR runtime : ' + str(minutes) + ' minutes and ' + str(seconds) + ' seconds')
         else:
-            print('Runtime : ' + str(seconds) + ' seconds and ' + str(milliseconds) + ' milliseconds')
+            print('ExoTR runtime : ' + str(seconds) + ' seconds and ' + str(milliseconds) + ' milliseconds')
     else:
-        print('Runtime : ' + str(milliseconds) + ' milliseconds')
+        print('ExoTR runtime : ' + str(milliseconds) + ' milliseconds')
 
 
-def Ts_prior(param, Ts_het_cube, Ts_phot_cube=None):
-    if param['fit_Ts_phot']:
-        if param['Ts_err'] is None:
-            Ts_phot_value = Ts_phot_cube * (param['Ts_phot_range'][1] - param['Ts_phot_range'][0]) + param['Ts_phot_range'][0]  # ignorant prior
-        else:
-            Ts_range = np.linspace(param['Ts_phot_range'][0], param['Ts_phot_range'][1], num=10000)
-            Ts_cdf = sp.stats.norm.cdf(Ts_range, param['Ts'], param['Ts_err'])
-            Ts_pri = interp1d(Ts_cdf, Ts_range)
-            Ts_phot_value = Ts_pri(Ts_phot_cube)
+def Ts_prior(param, Ts_phot_cube, Ts_het_cube=None, Ts_spot_cube=None, Ts_fac_cube=None):
+    if param['Ts_err'] is None:
+        Ts_phot_value = Ts_phot_cube * (param['Ts_phot_range'][1] - param['Ts_phot_range'][0]) + param['Ts_phot_range'][0]  # flat prior
     else:
-        Ts_phot_value = param['Ts_phot'] + 0.0
+        Ts_range = np.linspace(param['Ts_phot_range'][0], param['Ts_phot_range'][1], num=10000)
+        Ts_cdf = sp.stats.norm.cdf(Ts_range, param['Ts'], param['Ts_err'])
+        Ts_pri = interp1d(Ts_cdf, Ts_range)
+        Ts_phot_value = Ts_pri(Ts_phot_cube)
 
-    param['Ts_het_range'] = [0.5 * Ts_phot_value, 1.2 * Ts_phot_value]
-    Ts_het_value = Ts_het_cube * (param['Ts_het_range'][1] - param['Ts_het_range'][0]) + param['Ts_het_range'][0]  # ignorant prior
+    if param['stellar_activity_parameters'] == int(3):
+        Ts_het_value = Ts_het_cube * (param['Ts_het_range'][1] - param['Ts_het_range'][0]) + param['Ts_het_range'][0]
 
-    return Ts_het_value, Ts_phot_value
+        return Ts_het_value, Ts_phot_value
+
+    elif param['stellar_activity_parameters'] == int(5):
+        param['Ts_spot_range'] = [2300, Ts_phot_value]
+        param['Ts_fac_range'] = [Ts_phot_value, 1.2 * param['Ts']]
+        Ts_spot_value = Ts_spot_cube * (param['Ts_spot_range'][1] - param['Ts_spot_range'][0]) + param['Ts_spot_range'][0]
+        Ts_fac_value = Ts_fac_cube * (param['Ts_fac_range'][1] - param['Ts_fac_range'][0]) + param['Ts_fac_range'][0]
+
+        return Ts_spot_value, Ts_fac_value, Ts_phot_value

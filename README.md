@@ -1,6 +1,6 @@
 # ExoTR
 
-Version 1.2.3
+Version 1.3.0
 
 A fully Bayesian inverse retrieval algorithm to interpret exoplanetary transmission spectra.
 
@@ -17,12 +17,16 @@ Includes:
 * Audrey DeVault (Massachusetts Institute of Technology)
 
 ## Installation:
+Install python packages dependency:
+
+`pip install numpy scipy astropy matplotlib spectres`
+
 Download the .zip file from Github, unzip it and place it in a folder at your preference. 
 Therefore, make the folder searchable for python in your `.bash_profile` or `.bashrc` depending on your system
 
 `export PYTHONPATH="$PYTHONPATH:/full/path/of/folder/containing/ExoTR:"`
 
-Download the folder "Data" from the following link : [Google Drive](https://drive.google.com/drive/folders/1yXtKIHfsHfCrS9kJef0ycjK1zOvz2vXx?usp=share_link) .
+Download the folder "Data" from the following link : [Google Drive](https://drive.google.com/drive/folders/14YAmFzC_N8mP1l3LdpMZkKp01Gr6CMCJ?usp=sharing) .
 Place the downloaded "Data" folder inside the ExoTR folder.
 
 ## Usage

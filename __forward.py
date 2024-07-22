@@ -1,5 +1,4 @@
 from .__utils import *
-import copy
 
 
 class FORWARD_MODEL:
@@ -38,16 +37,21 @@ class FORWARD_MODEL:
                 SystemExit: If KeyError is raised, the function stops execution.
         """
         R0 = self.param['Rp'] * const.R_earth.value  # Radius of Planet in meters
-        try:
-            M0 = self.param['Mp'] * const.M_earth.value  # Mass of Planet in kilograms
-        except KeyError:
-            print('ERROR - This version of the code does not support unknown planetary mass, please specify.')
-            sys.exit()
+        M0 = self.param['Mp'] * const.M_earth.value  # Mass of Planet in kilograms
         RS = self.param['Rs'] * const.R_sun.value  # Radius of Star in meters
 
         # Atmospheric Profile
         P = np.array([self.param['P'][::-1]]).T
-        T = np.ones_like(P) * self.param['Tp']
+        if self.param['TP_profile'] is None:
+            T = np.ones_like(P) * self.param['Tp']
+        else:
+            if self.param['fit_T']:
+                T = self.param['TP_profile'](P) + self.param['Tp']
+            else:
+                T = self.param['TP_profile'](P)
+        for i in range(0, len(P)):
+            T[i] = min(max(100.0, T[i]), 2000.0)
+
         fH2O = np.array([self.param['vmr_H2O'][::-1]]).T
         mu = np.array([self.param['mean_mol_weight'][::-1]]).T
         n = len(P[:, 0])
@@ -163,11 +167,19 @@ class FORWARD_MODEL:
         return w[0] * 1000000., de[0]
 
     def stellar_activity(self):
-        st_het = take_star_spectrum(self.param, self.param['Ts_het'], meta=self.param['meta'])
-        st_phot = take_star_spectrum(self.param, self.param['Ts_phot'], meta=self.param['meta'])
-        stellar_contr = 1.0 / (1.0 - (self.param['st_frac'] * (1.0 - (st_het / st_phot))))
+        if self.param['stellar_activity_parameters'] == int(3):
+            st_het = take_star_spectrum(self.param, self.param['Ts_het'], meta=self.param['meta'])
+            st_phot = take_star_spectrum(self.param, self.param['Ts_phot'], meta=self.param['meta'])
+            st_het_effect = self.param['het_frac'] * (1.0 - (st_het / st_phot))
+            return 1.0 / (1.0 - st_het_effect)
 
-        return stellar_contr
+        elif self.param['stellar_activity_parameters'] == int(5):
+            st_spot = take_star_spectrum(self.param, self.param['Ts_spot'], meta=self.param['meta'])
+            st_fac = take_star_spectrum(self.param, self.param['Ts_fac'], meta=self.param['meta'])
+            st_phot = take_star_spectrum(self.param, self.param['Ts_phot'], meta=self.param['meta'])
+            st_spot_effect = self.param['spot_frac'] * (1.0 - (st_spot / st_phot))
+            st_fac_effect = self.param['fac_frac'] * (1.0 - (st_fac / st_phot))
+            return 1.0 / (1.0 - st_spot_effect - st_fac_effect)
 
 
 def forward(param, evaluation=None, retrieval_mode=True):
@@ -196,32 +208,45 @@ def forward(param, evaluation=None, retrieval_mode=True):
     if evaluation is not None:
         if param['fit_Rp']:
             param['Rp'] = evaluation['Rp']
+
+        if param['fit_Mp']:
+            param['Mp'] = evaluation['Mp']
+
         if param['fit_T']:
             param['Tp'] = evaluation['Tp']
+
         if param['fit_wtr_cld']:
-            param['Pw_top'] = (10. ** evaluation['pH2O'])
-            param['cldw_depth'] = (10. ** evaluation['dH2O'])
-            param['CR_H2O'] = (10. ** evaluation['crH2O'])
+            param['Pw_top'] = evaluation['pH2O']
+            param['cldw_depth'] = evaluation['dH2O']
+            param['CR_H2O'] = evaluation['crH2O']
         if param['fit_amn_cld']:
-            param['Pa_top'] = (10. ** evaluation['pNH3'])
-            param['clda_depth'] = (10. ** evaluation['dNH3'])
-            param['CR_NH3'] = (10. ** evaluation['crNH3'])
+            param['Pa_top'] = evaluation['pNH3']
+            param['clda_depth'] = evaluation['dNH3']
+            param['CR_NH3'] = evaluation['crNH3']
         if param['fit_gen_cld']:
-            param['P_top'] = (10. ** evaluation['ptop'])
+            param['P_top'] = evaluation['ptop']
+
         if param['incl_haze']:
-            param['diam_haze'] = (10. ** evaluation['dhaze'])
-            param['vmr_haze'] = (10. ** evaluation['vmrhaze'])
+            param['diam_haze'] = evaluation['dhaze']
+            param['vmr_haze'] = evaluation['vmrhaze']
+
         if not param['bare_rock']:
             clr = {}
             for mol in param['fit_molecules']:
                 clr[mol] = evaluation[mol]
             param = clr_to_vmr(param, clr)
-        if param['fit_het_frac']:
-            param['st_frac'] = evaluation['st_frac']
-        if param['fit_Ts_het']:
-            param['Ts_het'] = evaluation['Ts_het']
-        if param['fit_Ts_phot']:
-            param['Ts_phot'] = evaluation['Ts_phot']
+
+        if param['incl_star_activity']:
+            if param['stellar_activity_parameters'] == int(3):
+                param['het_frac'] = evaluation['het_frac']
+                param['Ts_het'] = evaluation['Ts_het']
+                param['Ts_phot'] = evaluation['Ts_phot']
+            if param['stellar_activity_parameters'] == int(5):
+                param['spot_frac'] = evaluation['spot_frac']
+                param['fac_frac'] = evaluation['fac_frac']
+                param['Ts_spot'] = evaluation['Ts_spot']
+                param['Ts_fac'] = evaluation['Ts_fac']
+                param['Ts_phot'] = evaluation['Ts_phot']
 
     if not param['bare_rock']:
         param = cloud_pos(param)
@@ -229,10 +254,11 @@ def forward(param, evaluation=None, retrieval_mode=True):
         mod = FORWARD_MODEL(param)
         wl, trans = mod.atmospheric_structure()
 
-        if param['spectrum']['bins']:
-            model = custom_spectral_binning(np.array([param['spectrum']['wl_low'], param['spectrum']['wl_high'], param['spectrum']['wl']]).T, wl, trans, bins=param['spectrum']['bins'])
-        else:
-            model = custom_spectral_binning(param['spectrum']['wl'], wl, trans, bins=param['spectrum']['bins'])
+        model = spectres(param['spectrum']['wl'][param['sorted_data_idx']], wl, trans, fill=False)
+        # if param['spectrum']['bins']:
+        #     model = custom_spectral_binning(np.array([param['spectrum']['wl_low'], param['spectrum']['wl_high'], param['spectrum']['wl']]).T, wl, trans, bins=param['spectrum']['bins'])
+        # else:
+        #     model = custom_spectral_binning(param['spectrum']['wl'], wl, trans, bins=param['spectrum']['bins'])
     else:
         model = np.ones(len(param['spectrum']['wl'])) * (((param['Rp'] * const.R_earth.value) / (param['Rs'] * const.R_sun.value)) ** 2.)
 
@@ -245,4 +271,4 @@ def forward(param, evaluation=None, retrieval_mode=True):
     if retrieval_mode:
         return model
     else:
-        return param['spectrum']['wl'], model
+        return param['spectrum']['wl'][param['sorted_data_idx']], model

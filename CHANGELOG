@@ -1,12 +1,41 @@
+## [1.3.0] - 2024-07-22
+- Added support for more gases as free parameters (i.e., N2O, H2)
+- Added the possibility to fit to a delta temperature when using an input P-T profile.
+- Added the possibility to input a custom P-T profile. Use the 'TP_profile' key in the parameter file (default is None), provide the path to the files containing the P-T profile. 2 columns: first temperature in K, second pressure in Pa.
+- Added the possibility to fit for the planetary mass ('fit_Mp' in the par file). If True, specify 'Mp' and 'Mp_err' to use a gaussian prior distribution, otherwise set 'Mp' to 'None' to select a uniform distribution.
+- Dropped 'dynesty' from available optimizers.
+- Introduced the 'spectres' python package that substitutes the 'custom_spectral_binning' util function throughout the ExoTR.
+
 ## [1.2.3]
+- The chi-squared statistic is also provided together with the Bayesian statistic.
+- Added the possibility to calculate the likelihood per single datapoint in post processing. Enabled by the flag 'calc_likelihood_data' (default is False), and moderated by the flag 'n_likelihood_data' (default 10000) which specify how many single datapoint likelihood to calculate. This function is MPI compatible. In addition, the calculated spectra are stored.
+- Added the possibility to fit the stellar activity using 5 parameters (faculae and spots separated) or 3 parameters (heterogeneity in general). Use the parameter 'stellar_activity_parameters' to regulate the behavior.
+- Added the possibility to choose the prior functions for the gases. Use 'modified_clr_prior' in the parameter file (default is True, i.e., modified prior). If False, a flat uniform prior between [-25, 25] is instead used.
+- Added the possibility to fit more than 6 gases when using the centered-log-ratio. 'define_modified_clr_prior' is the function in '__utils' that calculates the prior for different number of gases.
 - Bugfixes (posterior plot)
 
 ## [1.2.2]
 - Added the possibility to fit for a bare rock. Only the planetary radius is fitted. Offsets and stellar heterogeneity are optional.
-- Added support for more gases as free parameters (i.e. SO2)
+- Added support for more gases as free parameters (i.e., SO2)
 
 ## [1.2.1]
+- Removed 'pickle' dependency.
 - Added 'calc_spectra' method in '__multinest'. It calculates 100 transmission spectra extracted from the posterior distribution.
 
-## [1.2.0]
-First public release
+## [1.2.0] - 2024-02-22
+- Added the possibility to fit for tholin haze (mixing ratio and particle diameter)
+
+## [1.1.1] - 2024-02-15
+- Added Dynesty as optimizer. MPI functionality also added to work with dynesty. Additional packages need to be installed to use Dynesty (i.e. dill and schwimmbad).
+- Binning algorithm updated. Now the input file can contain 'bin_low' and 'bin_high' as first and second column for a more precise binning.
+- Offset fitting of different observations now shifts up/down the input spectra independently.
+
+## [1.1.0] - 2023-10-12
+- Fixed the semi-infinite cloud.
+- Added the possibility to fit for offsets between different instruments data.
+- Added the possibility to fit for the stellar contribution (see Pinhas et al. 2018).
+- In MultiNest, the 'plot_contribution' function now plots the single opacity contribution of the components of the calculated transmission spectrum.
+- Bugfixes.
+
+## [1.0.0] - 2023-06-14
+- Initial release
