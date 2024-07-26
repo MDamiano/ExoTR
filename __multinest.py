@@ -525,7 +525,7 @@ class MULTINEST:
                      linestyle='', linewidth=0.5, color='black', marker='o', markerfacecolor='red', markersize=4, capsize=1.75, label='Data')
 
         _, model = forward(self.param, retrieval_mode=False)
-        plt.plot(self.param['spectrum']['wl'][self.param['sorted_data_idx']], model*1e6, linestyle='', color='black', marker='d', markerfacecolor='blue', markersize=4)
+        # plt.plot(self.param['spectrum']['wl'][self.param['sorted_data_idx']], model*1e6, linestyle='', color='black', marker='d', markerfacecolor='blue', markersize=4)
 
         _chi_square_stat(np.array([self.param['spectrum']['wl'][self.param['sorted_data_idx']], self.param['spectrum']['T_depth'][self.param['sorted_data_idx']], self.param['spectrum']['error_T'][self.param['sorted_data_idx']]]).T, model)
 
@@ -551,6 +551,14 @@ class MULTINEST:
             np.savetxt(self.param['out_dir'] + 'MAP_best_fit_spec.dat', best_fit)
         else:
             np.savetxt(self.param['out_dir'] + 'MAP_best_fit_spec (solution ' + str(solutions) + ').dat', best_fit)
+
+        if os.path.isfile(self.param['out_dir'] + 'random_samples.dat'):
+            fl = np.loadtxt(self.param['out_dir'] + 'random_samples.dat')
+            std = np.std(fl[:, 1:], axis=1)
+            plt.fill_between(fl[:, 0], (best_fit[:, 1] + (3 * std)) * 1e6, (best_fit[:, 1] - (3 * std)) * 1e6, ec=('#404784', 0.0), fc=('#404784', 0.25))
+            plt.fill_between(fl[:, 0], (best_fit[:, 1] + (2 * std)) * 1e6, (best_fit[:, 1] - (2 * std)) * 1e6, ec=('#404784', 0.0), fc=('#404784', 0.5))
+            plt.fill_between(fl[:, 0], (best_fit[:, 1] + std) * 1e6, (best_fit[:, 1] - std) * 1e6, ec=('#404784', 0.0), fc=('#404784', 0.75))
+            del fl
 
         if self.param['spectrum']['bins']:
             self.param['spectrum']['wl'] = temp[:, 2]
@@ -2415,6 +2423,7 @@ class MULTINEST:
 
             with open(self.param['out_dir'] + 'stats_summary.txt', 'w') as fl:
                 fl.write('############### SUMMARY STATISTICS ###############\n')
+                fl.write('\n')
                 if self.param['plot_models']:
                     fl.write('chi-square (d.o.f) = ' + str(round(self.param['chi_square_stat']['chi2'], 2)) + ' (' + str(self.param['chi_square_stat']['dof']) + ')\n')
                     fl.write('Reduced chi-square = ' + str(round(self.param['chi_square_stat']['chi2_red'], 2)) + '\n')
@@ -2444,6 +2453,7 @@ class MULTINEST:
                 with open(self.param['out_dir'] + 'stats_summary.txt', 'a') as fl:
                     fl.write('*** SOLUTION ' + str(modes + 1) + ' ***\n')
                     fl.write('############### SUMMARY STATISTICS ###############\n')
+                    fl.write('\n')
                     if self.param['plot_models']:
                         fl.write('chi-square (d.o.f) = ' + str(round(self.param['chi_square_stat']['solution_' + str(modes + 1)]['chi2'], 2)) + ' (' + str(self.param['chi_square_stat']['solution_' + str(modes + 1)]['dof']) + ')\n')
                         fl.write('Reduced chi-square = ' + str(round(self.param['chi_square_stat']['solution_' + str(modes + 1)]['chi2_red'], 2)) + '\n')

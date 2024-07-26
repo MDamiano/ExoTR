@@ -41,6 +41,7 @@ fit_SO2                             False
 fit_CO                              False
 fit_CO2                             False
 fit_N2O                             False
+fit_OCS                             False
 fit_N2                              False
 fit_H2                              False
 % gas filling
@@ -71,15 +72,6 @@ nlive_p                             600
 ev_tolerance                        0.5
 multinest_resume                    True
 multinest_verbose                   False
-
-%   [Dynesty]     %
-bound                               multi
-dlogz_init                          0.1
-nlive_init                          250
-nlive_batch                         250
-pfrac                               1.0
-use_stop                            False
-dynesty_resume                      False
 
 %   [elpdLoo_calculation]   %
 calc_likelihood_data                False

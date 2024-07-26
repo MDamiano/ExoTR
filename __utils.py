@@ -72,7 +72,7 @@ def take_standard_parameters(pkg_dir):
                             param[paramline[0]] = str(paramline[1])
 
     param['wkg_dir'] = os.getcwd()
-    param['supported_molecules'] = ['H2O', 'CH4', 'C2H2', 'C2H4', 'C2H6', 'NH3', 'HCN', 'H2S', 'SO2', 'CO', 'CO2', 'N2O', 'N2', 'H2']
+    param['supported_molecules'] = ['H2O', 'CH4', 'C2H2', 'C2H4', 'C2H6', 'NH3', 'HCN', 'H2S', 'SO2', 'CO', 'CO2', 'N2O', 'OCS', 'N2', 'H2']
 
     for mol in param['supported_molecules']:
         param[mol + '_contribution'] = True
@@ -96,6 +96,7 @@ def take_standard_parameters(pkg_dir):
     mm['CO'] = mm['C'] + mm['O']
     mm['CO2'] = mm['C'] + (2. * mm['O'])
     mm['N2O'] = (2. * mm['N']) + mm['O']
+    mm['OCS'] = mm['O'] + mm['C'] + mm['S']
     mm['O2'] = 2. * mm['O']
     mm['O3'] = 3. * mm['O']
     mm['N2'] = 2. * mm['N']
@@ -128,6 +129,8 @@ def take_standard_parameters(pkg_dir):
             param['formatted_labels'][mol] = "Log(CO$_2$)"
         if mol == 'N2O':
             param['formatted_labels'][mol] = "Log(N$_2$O)"
+        if mol == 'OCS':
+            param['formatted_labels'][mol] = "Log(OCS)"
         if mol == 'N2':
             param['formatted_labels'][mol] = "Log(N$_2$)"
         if mol == 'H2':
@@ -551,8 +554,10 @@ def load_input_spectrum(param):
                 param['spectrum']['wl_low'] = param['spectrum']['wl_bins'][:, 0]
                 param['spectrum']['wl_high'] = param['spectrum']['wl_bins'][:, 1]
                 param['spectrum']['bins'] = True
+                param['sorted_data_idx'] = np.argsort(param['spectrum']['wl'])
             except IndexError:
                 param['spectrum']['wl'] = spectrum
+                param['sorted_data_idx'] = np.argsort(param['spectrum']['wl'])
                 param['spectrum']['bins'] = False
                 param['min_wl'] = min(param['spectrum']['wl'])
                 param['max_wl'] = max(param['spectrum']['wl'])
@@ -999,7 +1004,7 @@ def pre_load_variables(param):
         It specifically excludes certain keys from the MATLAB file that are not related to the opacity data.
         It also initializes the opacity without clouds to zero.
     """
-    data = scipy.io.loadmat(param['pkg_dir'] + 'Data/opac/opac_072024.mat')
+    data = scipy.io.loadmat(param['pkg_dir'] + 'Data/opac/opac_072024_v2.mat')
     opac_data_keys = []
     for i in data.keys():
         if i != '__header__' and i != '__globals__' and i != '__version__':
@@ -1093,6 +1098,8 @@ def retrieval_par_and_npar(param):
         parameters.append("clr(CO$_2$)")
     if param['fit_N2O']:
         parameters.append("clr(N$_2$O)")
+    if param['fit_OCS']:
+        parameters.append("clr(OCS)")
     if param['fit_N2']:
         parameters.append("clr(N$_2$)")
     if param['incl_star_activity']:
