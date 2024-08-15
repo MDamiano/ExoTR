@@ -1,5 +1,3 @@
-# ExoTR
-
 ![alt text](https://github.com/MDamiano/ExoTR/blob/main/ExoTR_logo.jpg?raw=true)
 
 Version 1.3.0
