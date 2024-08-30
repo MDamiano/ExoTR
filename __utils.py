@@ -336,6 +336,9 @@ def read_parfile(param, parfile=None):
         if param['meta'] is None:
             param['meta'] = 0.0
 
+        if os.path.isdir(param['pkg_dir'] + 'PHOENIX_models_light/'):
+            param['light_star_mods'] = True
+
     return param
 
 
@@ -422,17 +425,13 @@ def calc_mean_mol_mass(param):
             dict: The updated parameter dictionary including mean molecular weight and updated vmr values for the
                   corresponding fill gas.
     """
-    vmr_M, MMM = 0.0, 0.0
+    param['vmr_' + param['gas_fill']] = np.ones(len(param['P']))
+    param['mean_mol_weight'] = np.zeros(len(param['P']))
     for mol in param['fit_molecules']:
-        if mol != 'H2O':
-            vmr_M += param['vmr_' + mol]
-            MMM += param['vmr_' + mol] * param['mm'][mol]
-    param['vmr_' + param['gas_fill']] = np.zeros(len(param['P']))
-    param['mean_mol_weight'] = MMM * np.ones(len(param['P']))
-
-    for i in range(0, len(param['P'])):
-        param['vmr_' + param['gas_fill']][i] = (10. ** 0.0) - (vmr_M + param['vmr_H2O'][i])
-        param['mean_mol_weight'][i] += ((param['vmr_H2O'][i] * param['mm']['H2O']) + (param['vmr_' + param['gas_fill']][i] * param['mm'][param['gas_fill']]))
+        param['vmr_' + mol] = np.ones(len(param['P'])) * param['vmr_' + mol]
+        param['vmr_' + param['gas_fill']] -= param['vmr_' + mol]
+        param['mean_mol_weight'] += (param['vmr_' + mol] * param['mm'][mol])
+    param['mean_mol_weight'] += (param['vmr_' + param['gas_fill']] * param['mm'][param['gas_fill']])
 
     if not param['ret_mode']:
         print('VMR ' + param['gas_fill'] + ' \t\t = \t' + str(param['vmr_' + param['gas_fill']][-1]))
@@ -704,6 +703,11 @@ def cloud_pos(param):
         if depth_w == 0:
             depth_w = 1
 
+        try:
+            if np.dtype(param['vmr_H2O']) != 'float64':
+                pass
+        except TypeError:
+            param['vmr_H2O'] = param['vmr_H2O'][-1] + 0.0
         watermix = np.ones((len(param['P_standard']))) * (param['CR_H2O'] * param['vmr_H2O'])
         dw = (np.log10(param['vmr_H2O']) - np.log10(param['CR_H2O'] * param['vmr_H2O'])) / depth_w
         for i in range(0, len(watermix)):
@@ -736,12 +740,12 @@ def ranges(param):
         it sets the corresponding range parameters in the dictionary.
     """
     if param['fit_wtr_cld']:
-        param['ptopw_range'] = [0.0, 8.0]  # Top pressure H2O
-        param['dcldw_range'] = [0.0, 8.5]  # Depth H2O cloud
+        param['ptopw_range'] = [0.0, 7.5]  # Top pressure H2O
+        param['dcldw_range'] = [0.0, 8.0]  # Depth H2O cloud
         param['crh2o_range'] = [-12.0, 0.0]  # Condensation Ratio H2O
     if param['fit_amn_cld']:
-        param['ptopa_range'] = [0.0, 8.0]  # Top pressure NH3
-        param['dclda_range'] = [0.0, 8.5]  # Depth HN3 cloud
+        param['ptopa_range'] = [0.0, 7.5]  # Top pressure NH3
+        param['dclda_range'] = [0.0, 8.0]  # Depth HN3 cloud
         param['crnh3_range'] = [-12.0, 0.0]  # Condensation Ratio NH3
     if param['fit_gen_cld']:
         param['ptop_range'] = [0.0, 9.0]  # Top pressure
@@ -759,15 +763,22 @@ def ranges(param):
     if param['fit_Rp']:
         param['rp_range'] = [param['Rp'] * 0.5, param['Rp'] * 2.0]  # Planetary Radius
     if param['fit_Mp']:
-        param['mp_range'] = [0.01, 10.0]  # Planetary Mass
+        if param['Mp_prior'] == 'gaussian':
+            param['mp_range'] = [param['Mp_orig'] - (5.0 * param['Mp_err']), param['Mp_orig'] + (5.0 * param['Mp_err'])]
+            if param['Mp_orig'] - (5.0 * param['Mp_err']) < 0.01:
+                param['mp_range'][0] = 0.01
+            if param['Mp_orig'] + (5.0 * param['Mp_err']) > 20.0:
+                param['mp_range'][1] = 20.0
+        else:
+            param['mp_range'] = [0.01, 20.0]  # Planetary Mass
     if param['fit_offset']:
         for i in range(0, param['n_offsets']):
             param['off' + str(i + 1) + '_range'] = [-param['offset_range'] / 1e6, param['offset_range'] / 1e6]
     if param['incl_star_activity']:
         param['delta_range'] = [0.0, 0.5]  # Fraction of the star surface affected by activity
-        param['Ts_phot_range'] = [1000, 10000]
+        param['Ts_phot_range'] = [param['Ts'] - (5.0 * param['Ts_err']), param['Ts'] + (5.0 * param['Ts_err'])]
         if param['stellar_activity_parameters'] == int(3):
-            param['Ts_het_range'] = [2300, 1.2 * param['Ts']]
+            param['Ts_het_range'] = [1500, 1.2 * param['Ts']]
 
     return param
 
@@ -814,182 +825,6 @@ def define_modified_clr_prior(ngas):
     return ppf
 
 
-def take_star_spectrum(param, Ts, meta=None):
-    # PHOENIX STELLAR SPECTRA FROM : http://svo2.cab.inta-csic.es/theory/newov2/index.php
-
-    def resize(fl, final=False):
-        wl_temp = reso_range(0.85 * param['min_wl'], 1.1 * param['max_wl'], res=20000, bins=False)
-        if not final:
-            idx_start = find_nearest(fl[:, 0] * (10. ** -4.), 0.8 * param['min_wl'])
-            idx_stop = find_nearest(fl[:, 0] * (10. ** -4.), 1.15 * param['max_wl'])
-            return spectres(wl_temp, fl[idx_start:idx_stop, 0] * (10. ** -4.), fl[idx_start:idx_stop, 1], fill=False)
-        else:
-            return spectres(param['spectrum']['wl'][param['sorted_data_idx']], wl_temp, fl, fill=False)
-
-    directory = param['pkg_dir'] + 'PHOENIX_models/'
-    t_star = round(float(Ts), -2)
-    interp_Ts = True
-    if t_star - Ts < 0:
-        t_star1 = t_star + 0.0
-        t_star2 = t_star + 100
-    elif t_star - Ts > 0:
-        t_star1 = t_star - 100
-        t_star2 = t_star + 0.0
-    else:
-        t_star = str(t_star / 100)
-        interp_Ts = False
-
-    if interp_Ts:
-        t_star2_ratio = 1.0 - ((t_star2 - Ts) / (t_star2 - t_star1))
-        t_star1_ratio = 1.0 - t_star2_ratio
-        if t_star1 < 1000:
-            t_star1 = '00' + str(int(t_star1 / 100))
-        elif t_star1 < 10000:
-            t_star1 = '0' + str(int(t_star1 / 100))
-        else:
-            t_star1 = str(int(t_star1 / 100))
-        if t_star2 < 1000:
-            t_star2 = '00' + str(int(t_star2 / 100))
-        elif t_star2 < 10000:
-            t_star2 = '0' + str(int(t_star2 / 100))
-        else:
-            t_star2 = str(int(t_star2 / 100))
-
-    try:
-        param['Loggs'] += 0.0
-    except KeyError:
-        param['Loggs'] = np.log10(const.G.value * (param['Ms'] * const.M_sun.value) / ((param['Rs'] * const.R_sun.value) ** 2.)) + 2
-
-    loggs = round(param['Loggs'] * 2.) / 2.
-    interp_loggs = True
-    if loggs - param['Loggs'] < 0:
-        loggs1 = loggs + 0.0
-        loggs2 = loggs + 0.5
-    elif loggs - param['Loggs'] > 0:
-        loggs1 = loggs - 0.5
-        loggs2 = loggs + 0.0
-    else:
-        loggs = '-' + str(loggs)
-        interp_loggs = False
-
-    if interp_loggs:
-        loggs2_ratio = 1.0 - ((loggs2 - param['Loggs']) / (loggs2 - loggs1))
-        loggs1_ratio = 1.0 - loggs2_ratio
-        loggs1 = '-' + str(loggs1)
-        loggs2 = '-' + str(loggs2)
-
-    if meta is None:
-        s_meta = '-' + str(0.0)
-        interp_meta = False
-    else:
-        s_meta = round(meta * 2.) / 2.
-        interp_meta = True
-        if s_meta - meta < 0:
-            s_meta1 = s_meta + 0.0
-            s_meta2 = s_meta + 0.5
-        elif s_meta - meta > 0:
-            s_meta1 = s_meta - 0.5
-            s_meta2 = s_meta + 0.0
-        else:
-            interp_meta = False
-            s_meta = '-' + str(0.0)
-
-    if interp_meta:
-        s_meta2_ratio = 1.0 - ((s_meta2 - meta) / (s_meta2 - s_meta1))
-        s_meta1_ratio = 1.0 - s_meta2_ratio
-        if s_meta1 <= 0:
-            s_meta1 = '-' + str(abs(s_meta1))
-        else:
-            s_meta1 = '+' + str(s_meta1)
-        if s_meta2 <= 0:
-            s_meta2 = '-' + str(abs(s_meta2))
-        else:
-            s_meta2 = '+' + str(s_meta2)
-
-    s_files = {}
-    if interp_Ts and interp_loggs and interp_meta:
-        if float(t_star1) < 26:
-            s_meta1 = '-' + str(0.0)
-        if float(t_star2) < 26:
-            s_meta2 = '-' + str(0.0)
-        s_files['A'] = np.genfromtxt(directory + 'lte' + t_star1 + loggs1 + s_meta1 + '.txt', skip_header=6)
-        s_files['B'] = np.genfromtxt(directory + 'lte' + t_star2 + loggs1 + s_meta1 + '.txt', skip_header=6)
-        s_files['C'] = np.genfromtxt(directory + 'lte' + t_star1 + loggs2 + s_meta1 + '.txt', skip_header=6)
-        s_files['D'] = np.genfromtxt(directory + 'lte' + t_star2 + loggs2 + s_meta1 + '.txt', skip_header=6)
-        s_files['E'] = np.genfromtxt(directory + 'lte' + t_star1 + loggs1 + s_meta2 + '.txt', skip_header=6)
-        s_files['F'] = np.genfromtxt(directory + 'lte' + t_star2 + loggs1 + s_meta2 + '.txt', skip_header=6)
-        s_files['G'] = np.genfromtxt(directory + 'lte' + t_star1 + loggs2 + s_meta2 + '.txt', skip_header=6)
-        s_files['H'] = np.genfromtxt(directory + 'lte' + t_star2 + loggs2 + s_meta2 + '.txt', skip_header=6)
-    elif interp_Ts and interp_loggs and not interp_meta:
-        s_files['A'] = np.genfromtxt(directory + 'lte' + t_star1 + loggs1 + s_meta + '.txt', skip_header=6)
-        s_files['B'] = np.genfromtxt(directory + 'lte' + t_star2 + loggs1 + s_meta + '.txt', skip_header=6)
-        s_files['C'] = np.genfromtxt(directory + 'lte' + t_star1 + loggs2 + s_meta + '.txt', skip_header=6)
-        s_files['D'] = np.genfromtxt(directory + 'lte' + t_star2 + loggs2 + s_meta + '.txt', skip_header=6)
-    elif interp_Ts and interp_meta and not interp_loggs:
-        if float(t_star1) < 26:
-            s_meta1 = '-' + str(0.0)
-        if float(t_star2) < 26:
-            s_meta2 = '-' + str(0.0)
-        s_files['A'] = np.genfromtxt(directory + 'lte' + t_star1 + loggs + s_meta1 + '.txt', skip_header=6)
-        s_files['B'] = np.genfromtxt(directory + 'lte' + t_star2 + loggs + s_meta1 + '.txt', skip_header=6)
-        s_files['C'] = np.genfromtxt(directory + 'lte' + t_star1 + loggs + s_meta2 + '.txt', skip_header=6)
-        s_files['D'] = np.genfromtxt(directory + 'lte' + t_star2 + loggs + s_meta2 + '.txt', skip_header=6)
-    elif interp_loggs and interp_meta and not interp_Ts:
-        s_files['A'] = np.genfromtxt(directory + 'lte' + t_star + loggs1 + s_meta1 + '.txt', skip_header=6)
-        s_files['B'] = np.genfromtxt(directory + 'lte' + t_star + loggs2 + s_meta1 + '.txt', skip_header=6)
-        s_files['C'] = np.genfromtxt(directory + 'lte' + t_star + loggs1 + s_meta2 + '.txt', skip_header=6)
-        s_files['D'] = np.genfromtxt(directory + 'lte' + t_star + loggs2 + s_meta2 + '.txt', skip_header=6)
-    elif interp_Ts and not interp_loggs and not interp_meta:
-        s_files['A'] = np.genfromtxt(directory + 'lte' + t_star1 + loggs + s_meta + '.txt', skip_header=6)
-        s_files['B'] = np.genfromtxt(directory + 'lte' + t_star2 + loggs + s_meta + '.txt', skip_header=6)
-    elif interp_loggs and not interp_Ts and not interp_meta:
-        s_files['A'] = np.genfromtxt(directory + 'lte' + t_star + loggs1 + s_meta + '.txt', skip_header=6)
-        s_files['B'] = np.genfromtxt(directory + 'lte' + t_star + loggs2 + s_meta + '.txt', skip_header=6)
-    elif interp_meta and not interp_Ts and not interp_loggs:
-        s_files['A'] = np.genfromtxt(directory + 'lte' + t_star + loggs + s_meta1 + '.txt', skip_header=6)
-        s_files['B'] = np.genfromtxt(directory + 'lte' + t_star + loggs + s_meta2 + '.txt', skip_header=6)
-    else:
-        s_files['A'] = np.genfromtxt(directory + 'lte' + t_star + loggs + s_meta + '.txt', skip_header=6)
-
-    # plt.plot(s_files['D'][:, 0] * (10. ** -4.), s_files['D'][:, 1])
-    # plt.plot(s_files['B'][:, 0] * (10. ** -4.), s_files['B'][:, 1])
-    # plt.plot(s_files['C'][:, 0] * (10. ** -4.), s_files['C'][:, 1])
-    # plt.plot(s_files['A'][:, 0] * (10. ** -4.), s_files['A'][:, 1])
-
-    for s_keys in s_files.keys():
-        s_files[s_keys] = resize(s_files[s_keys], final=False)
-
-    if interp_Ts and interp_loggs and interp_meta:
-        sp = s_meta1_ratio * (loggs1_ratio * (t_star1_ratio * s_files['A'] + t_star2_ratio * s_files['B']) + loggs2_ratio * (t_star1_ratio * s_files['C'] + t_star2_ratio * s_files['D'])) + \
-             s_meta2_ratio * (loggs1_ratio * (t_star1_ratio * s_files['E'] + t_star2_ratio * s_files['F']) + loggs2_ratio * (t_star1_ratio * s_files['G'] + t_star2_ratio * s_files['H']))
-    elif interp_Ts and interp_loggs and not interp_meta:
-        sp = loggs1_ratio * (t_star1_ratio * s_files['A'] + t_star2_ratio * s_files['B']) + loggs2_ratio * (t_star1_ratio * s_files['C'] + t_star2_ratio * s_files['D'])
-    elif interp_Ts and interp_meta and not interp_loggs:
-        sp = s_meta1_ratio * (t_star1_ratio * s_files['A'] + t_star2_ratio * s_files['B']) + s_meta2_ratio * (t_star1_ratio * s_files['C'] + t_star2_ratio * s_files['D'])
-    elif interp_loggs and interp_meta and not interp_Ts:
-        sp = s_meta1_ratio * (loggs1_ratio * s_files['A'] + loggs2_ratio * s_files['B']) + s_meta2_ratio * (loggs1_ratio * s_files['C'] + loggs2_ratio * s_files['D'])
-    elif interp_Ts and not interp_loggs and not interp_meta:
-        sp = t_star1_ratio * s_files['A'] + t_star2_ratio * s_files['B']
-    elif interp_loggs and not interp_Ts and not interp_meta:
-        sp = loggs1_ratio * s_files['A'] + loggs2_ratio * s_files['B']
-    elif interp_meta and not interp_Ts and not interp_loggs:
-        sp = s_meta1_ratio * s_files['A'] + s_meta2_ratio * s_files['B']
-    else:
-        sp = s_files['A'] + 0.0
-
-    # plt.plot(param['spectrum']['wl'], s_files['D'])
-    # plt.plot(param['spectrum']['wl'], s_files['B'])
-    # plt.plot(param['spectrum']['wl'], s_files['C'])
-    # plt.plot(param['spectrum']['wl'], s_files['A'])
-    #
-    # plt.plot(param['spectrum']['wl'], sp, linestyle='--')
-    # plt.xlim([0.5, 5.5])
-    # plt.ylim([0.0, 500000])
-    # plt.show()
-
-    return resize(sp, final=True)
-
-
 def pre_load_variables(param):
     """
         Loads opacity data from a MATLAB (.mat) file and updates the parameter dictionary.
@@ -1004,7 +839,7 @@ def pre_load_variables(param):
         It specifically excludes certain keys from the MATLAB file that are not related to the opacity data.
         It also initializes the opacity without clouds to zero.
     """
-    data = scipy.io.loadmat(param['pkg_dir'] + 'Data/opac/opac_072024_v2.mat')
+    data = scipy.io.loadmat(param['pkg_dir'] + 'Data/opac/opac_082024.mat')
     opac_data_keys = []
     for i in data.keys():
         if i != '__header__' and i != '__globals__' and i != '__version__':
@@ -1246,8 +1081,10 @@ def Ts_prior(param, Ts_phot_cube, Ts_het_cube=None, Ts_spot_cube=None, Ts_fac_cu
     if param['Ts_err'] is None:
         Ts_phot_value = Ts_phot_cube * (param['Ts_phot_range'][1] - param['Ts_phot_range'][0]) + param['Ts_phot_range'][0]  # flat prior
     else:
-        Ts_range = np.linspace(param['Ts_phot_range'][0], param['Ts_phot_range'][1], num=10000)
+        Ts_range = np.linspace(param['Ts_phot_range'][0], param['Ts_phot_range'][1], num=10000, endpoint=True)
         Ts_cdf = sp.stats.norm.cdf(Ts_range, param['Ts'], param['Ts_err'])
+        Ts_cdf = np.array([0.0] + list(Ts_cdf) + [1.0])
+        Ts_range = np.array([Ts_range[0]] + list(Ts_range) + [Ts_range[-1]])
         Ts_pri = interp1d(Ts_cdf, Ts_range)
         Ts_phot_value = Ts_pri(Ts_phot_cube)
 
@@ -1257,7 +1094,7 @@ def Ts_prior(param, Ts_phot_cube, Ts_het_cube=None, Ts_spot_cube=None, Ts_fac_cu
         return Ts_het_value, Ts_phot_value
 
     elif param['stellar_activity_parameters'] == int(5):
-        param['Ts_spot_range'] = [2300, Ts_phot_value]
+        param['Ts_spot_range'] = [1500, Ts_phot_value]
         param['Ts_fac_range'] = [Ts_phot_value, 1.2 * param['Ts']]
         Ts_spot_value = Ts_spot_cube * (param['Ts_spot_range'][1] - param['Ts_spot_range'][0]) + param['Ts_spot_range'][0]
         Ts_fac_value = Ts_fac_cube * (param['Ts_fac_range'][1] - param['Ts_fac_range'][0]) + param['Ts_fac_range'][0]

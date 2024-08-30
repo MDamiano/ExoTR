@@ -16,6 +16,7 @@ fac_frac                            None
 name_p                              None
 major-a                             None
 Rp                                  None
+Mp                                  None
 eccentricity                        None
 inclination                         90.0
 Tp                                  None
@@ -57,12 +58,13 @@ incl_haze                           False
 % fit for star activity
 incl_star_activity                  False
 stellar_activity_parameters         5
+light_star_mods                     False
 
 % fit for offsets betweeen different observations. Offset range in ppm.
 fit_offset                          False
 offset_range                        100
 
-modified_clr_prior                  True
+modified_clr_prior                  False
 optimizer                           None
 
 %   [MultiNest]     %

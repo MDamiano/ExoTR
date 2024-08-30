@@ -1,3 +1,3 @@
-__version__ = '1.3.1alpha0'
+__version__ = '1.4.2'
 
 from .__main__ import *

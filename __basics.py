@@ -7,6 +7,7 @@ import matplotlib.pyplot as plt
 from spectres import spectres
 import scipy as sp
 import numpy as np
+import platform
 import scipy.io
 import warnings
 import random

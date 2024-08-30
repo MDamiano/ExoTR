@@ -167,16 +167,18 @@ class MULTINEST:
                     evaluation['Ts_phot'] = cube[par + 4] + 0.0  # star photosphere temperature
                     par += 5
 
-            # return forward(self.param, evaluation=evaluation, retrieval_mode=retrieval_mode)
-            try:
+            if platform.system() == 'Darwin':
                 return forward(self.param, evaluation=evaluation, retrieval_mode=retrieval_mode)
-            except:
-                if MPIimport:
-                    MPI.Finalize()
-                    sys.exit()
-                else:
-                    print('Some errors occurred in during the calculation of the forward model.')
-                    sys.exit()
+            else:
+                try:
+                    return forward(self.param, evaluation=evaluation, retrieval_mode=retrieval_mode)
+                except:
+                    if MPIimport:
+                        MPI.Finalize()
+                        sys.exit()
+                    else:
+                        print('Some errors occurred in during the calculation of the forward model.')
+                        sys.exit()
 
         def prior(cube, ndim, nparams):
             """
@@ -216,8 +218,10 @@ class MULTINEST:
                 if self.param['Mp_prior'] == 'uniform':
                     cube[par] = cube[par] * (self.param['mp_range'][1] - self.param['mp_range'][0]) + self.param['mp_range'][0]  # uniform prior -> Mp, Planetary Radius
                 elif self.param['Mp_prior'] == 'gaussian':
-                    Mp_range = np.linspace(self.param['mp_range'][0], self.param['mp_range'][1], num=10000)                      # gaussian prior -> Mp, Planetary Radius
+                    Mp_range = np.linspace(self.param['mp_range'][0], self.param['mp_range'][1], num=10000, endpoint=True)                      # gaussian prior -> Mp, Planetary Radius
                     Mp_cdf = sp.stats.norm.cdf(Mp_range, self.param['Mp_orig'], self.param['Mp_err'])
+                    Mp_cdf = np.array([0.0] + list(Mp_cdf) + [1.0])
+                    Mp_range = np.array([Mp_range[0]] + list(Mp_range) + [Mp_range[-1]])
                     Mp_pri = interp1d(Mp_cdf, Mp_range)
                     cube[par] = Mp_pri(cube[par])
                 par += 1
@@ -342,6 +346,8 @@ class MULTINEST:
                 MPI.COMM_WORLD.Barrier()  # wait for everybody to synchronize here
 
             if MPIimport and MPIrank == 0:
+                if platform.system() != 'Darwin':
+                    time.sleep(600)
                 rank_0 = np.loadtxt(self.param['out_dir'] + 'loglikelihood_per_datapoint/loglike_0.dat')
                 rank_0_spec = np.loadtxt(self.param['out_dir'] + 'loglikelihood_per_datapoint/samples_0.dat')
                 for i in range(1, MPIsize):
@@ -397,9 +403,6 @@ class MULTINEST:
 
             if self.param['plot_posterior']:
                 self.plot_posteriors(prefix, multinest_results, parameters, mds)
-
-        for i in self.param['opac_data_keys']:
-            del self.param[i]
 
         if MPIimport:
             MPI.Finalize()
@@ -547,18 +550,26 @@ class MULTINEST:
         plt.plot(wl, model*1e6, color='#404784', label='MAP solution R=500')
 
         best_fit = np.array([wl, model]).T
-        if solutions is None:
-            np.savetxt(self.param['out_dir'] + 'MAP_best_fit_spec.dat', best_fit)
-        else:
-            np.savetxt(self.param['out_dir'] + 'MAP_best_fit_spec (solution ' + str(solutions) + ').dat', best_fit)
 
         if os.path.isfile(self.param['out_dir'] + 'random_samples.dat'):
             fl = np.loadtxt(self.param['out_dir'] + 'random_samples.dat')
-            std = np.std(fl[:, 1:], axis=1)
-            plt.fill_between(fl[:, 0], (best_fit[:, 1] + (3 * std)) * 1e6, (best_fit[:, 1] - (3 * std)) * 1e6, ec=('#404784', 0.0), fc=('#404784', 0.25))
-            plt.fill_between(fl[:, 0], (best_fit[:, 1] + (2 * std)) * 1e6, (best_fit[:, 1] - (2 * std)) * 1e6, ec=('#404784', 0.0), fc=('#404784', 0.5))
-            plt.fill_between(fl[:, 0], (best_fit[:, 1] + std) * 1e6, (best_fit[:, 1] - std) * 1e6, ec=('#404784', 0.0), fc=('#404784', 0.75))
+            plt.fill_between(fl[:, 0], (best_fit[:, 1] + (np.quantile(fl[:, 1:], [0.00135, 0.99865], axis=1)[1] - np.quantile(fl[:, 1:], 0.5, axis=1))) * 1e6, (best_fit[:, 1] + (np.quantile(fl[:, 1:], [0.00135, 0.99865], axis=1)[0] - np.quantile(fl[:, 1:], 0.5, axis=1))) * 1e6, ec=('#404784', 0.0), fc=('#404784', 0.25))
+            plt.fill_between(fl[:, 0], (best_fit[:, 1] + (np.quantile(fl[:, 1:], [0.0225, 0.9775], axis=1)[1] - np.quantile(fl[:, 1:], 0.5, axis=1))) * 1e6, (best_fit[:, 1] + (np.quantile(fl[:, 1:], [0.0225, 0.9775], axis=1)[0] - np.quantile(fl[:, 1:], 0.5, axis=1))) * 1e6, ec=('#404784', 0.0), fc=('#404784', 0.5))
+            plt.fill_between(fl[:, 0], (best_fit[:, 1] + (np.quantile(fl[:, 1:], [0.16, 0.84], axis=1)[1] - np.quantile(fl[:, 1:], 0.5, axis=1))) * 1e6, (best_fit[:, 1] + (np.quantile(fl[:, 1:], [0.16, 0.84], axis=1)[0] - np.quantile(fl[:, 1:], 0.5, axis=1))) * 1e6, ec=('#404784', 0.0), fc=('#404784', 0.75))
+
+            best_fit = np.concatenate((best_fit, np.array([best_fit[:, 1] + (np.quantile(fl[:, 1:], [0.16, 0.84], axis=1)[1] - np.quantile(fl[:, 1:], 0.5, axis=1))]).T), axis=1)
+            best_fit = np.concatenate((best_fit, np.array([best_fit[:, 1] + (np.quantile(fl[:, 1:], [0.16, 0.84], axis=1)[0] - np.quantile(fl[:, 1:], 0.5, axis=1))]).T), axis=1)
+            best_fit = np.concatenate((best_fit, np.array([best_fit[:, 1] + (np.quantile(fl[:, 1:], [0.0225, 0.9775], axis=1)[1] - np.quantile(fl[:, 1:], 0.5, axis=1))]).T), axis=1)
+            best_fit = np.concatenate((best_fit, np.array([best_fit[:, 1] + (np.quantile(fl[:, 1:], [0.0225, 0.9775], axis=1)[0] - np.quantile(fl[:, 1:], 0.5, axis=1))]).T), axis=1)
+            best_fit = np.concatenate((best_fit, np.array([best_fit[:, 1] + (np.quantile(fl[:, 1:], [0.00135, 0.99865], axis=1)[1] - np.quantile(fl[:, 1:], 0.5, axis=1))]).T), axis=1)
+            best_fit = np.concatenate((best_fit, np.array([best_fit[:, 1] + (np.quantile(fl[:, 1:], [0.00135, 0.99865], axis=1)[0] - np.quantile(fl[:, 1:], 0.5, axis=1))]).T), axis=1)
+
             del fl
+
+        if solutions is None:
+            np.savetxt(self.param['out_dir'] + 'Best_fit.dat', best_fit)
+        else:
+            np.savetxt(self.param['out_dir'] + 'Best_fit_(solution ' + str(solutions) + ').dat', best_fit)
 
         if self.param['spectrum']['bins']:
             self.param['spectrum']['wl'] = temp[:, 2]
@@ -601,15 +612,9 @@ class MULTINEST:
         ### CHEMISTRY ###
         fig, ax = plt.subplots()
 
-        for mol in self.param['fit_molecules']:
-            if mol != 'H2O':
-                print(str(mol) + ' -> Top: ' + str((self.param['vmr_' + mol] * np.ones(len(self.param['P'])))[0]) + ', Bottom: ' + str((self.param['vmr_' + mol] * np.ones(len(self.param['P'])))[-1]))
-                ax.loglog(self.param['vmr_' + mol] * np.ones(len(self.param['P'])), self.param['P'], label=mol)
-            else:
-                print(str(mol) + ' -> Top: ' + str(self.param['vmr_' + mol][0]) + ', Bottom: ' + str(self.param['vmr_' + mol][-1]))
-                ax.loglog(self.param['vmr_' + mol], self.param['P'], label=mol)
-        print(str(self.param['gas_fill']) + ' -> Top: ' + str((self.param['vmr_' + self.param['gas_fill']] * np.ones(len(self.param['P'])))[0]) + ', Bottom: ' + str((self.param['vmr_' + self.param['gas_fill']] * np.ones(len(self.param['P'])))[-1]))
-        ax.loglog(self.param['vmr_' + self.param['gas_fill']] * np.ones(len(self.param['P'])), self.param['P'], label=self.param['gas_fill'])
+        for mol in self.param['fit_molecules'] + [self.param['gas_fill']]:
+            print(str(mol) + ' -> Top: ' + str(self.param['vmr_' + mol][0]) + ', Bottom: ' + str(self.param['vmr_' + mol][-1]))
+            ax.loglog(self.param['vmr_' + mol], self.param['P'], label=mol)
 
         ax.set_xlim((1e-18, 1.5))
         ax.set_xlabel('Molecular VMR')
@@ -687,7 +692,10 @@ class MULTINEST:
             ax.semilogy(np.ones(len(self.param['P'])) * self.param['Tp'], self.param['P'])
         else:
             if self.param['fit_T']:
-                ax.semilogy(self.param['TP_profile'](self.param['P']) + self.param['Tp'], self.param['P'])
+                T = np.ones(len(self.param['P']))
+                for i in range(0, len(T)):
+                    T[i] = min(max(100.0, (self.param['TP_profile'](self.param['P']) + self.param['Tp'])[i]), 2000.0)
+                ax.semilogy(T, self.param['P'])
             else:
                 ax.semilogy(self.param['TP_profile'](self.param['P']), self.param['P'])
 
@@ -909,10 +917,8 @@ class MULTINEST:
 
             if self.param['spectrum']['bins']:
                 model = spectres(temp[temp_sorted_data_idx, 2], self.param['spectrum']['wl'], samples[:, i + 1], fill=False)
-            #     model = custom_spectral_binning(np.array([temp[:, 0], temp[:, 1], temp[:, 2]]).T, self.param['spectrum']['wl'], samples[:, i + 1], bins=self.param['spectrum']['bins'])
             else:
                 model = spectres(temp[temp_sorted_data_idx], self.param['spectrum']['wl'], samples[:, i + 1], fill=False)
-            #     model = custom_spectral_binning(temp, self.param['spectrum']['wl'], samples[:, i + 1], bins=self.param['spectrum']['bins'])
 
             # Calculate likelihood per single datapoint
             chi = (self.param['spectrum']['T_depth'][temp_sorted_data_idx] - model) / self.param['spectrum']['error_T'][temp_sorted_data_idx]
@@ -1076,6 +1082,8 @@ class MULTINEST:
                 np.savetxt(prefix + 'solution' + str(modes) + '.txt', b)
             else:
                 np.savetxt(prefix + '.txt', b)
+
+            return z
 
         def _corner_parameters():
             if os.path.isfile(prefix + 'params_original.json'):
@@ -1272,7 +1280,7 @@ class MULTINEST:
 
             return NEST_out
 
-        def _plotting_bounds(results, modes=None):
+        def _plotting_bounds(results, gas_pos, modes=None):
             """
                 Computes the boundaries for the plot based on the results from a dynamic nested sampling calculation.
 
@@ -1323,6 +1331,8 @@ class MULTINEST:
                 for i, _ in enumerate(boundaries):
                     q = [0.5 - 0.5 * boundaries[i], 0.5 + 0.5 * boundaries[i]]
                     boundaries[i] = _quantile(samples[i], q, weights=weights)
+                    if gas_pos - 2 <= i < gas_pos + len(self.param['fit_molecules']) and boundaries[i][0] < -12.0:
+                        boundaries[i][0] = -12.0
 
                 return boundaries
             else:
@@ -1364,7 +1374,10 @@ class MULTINEST:
                 for i in range(ndim):
                     min_b, max_b = [], []
                     for j in boundaries.keys():
-                        min_b.append(boundaries[j][i][0])
+                        if gas_pos - 2 <= i < gas_pos + len(self.param['fit_molecules']) and boundaries[j][i][0] < -12.0:
+                            min_b.append(-12.0)
+                        else:
+                            min_b.append(boundaries[j][i][0])
                         max_b.append(boundaries[j][i][1])
                     bound.append([min(min_b), max(max_b)])
 
@@ -2387,7 +2400,7 @@ class MULTINEST:
         _corner_parameters()
         if mds < 2:
             nest_out = _store_nest_solutions()
-            _posteriors_clr_to_vmr(prefix, modes=None)
+            gas_pos = _posteriors_clr_to_vmr(prefix, modes=None)
 
             data = np.loadtxt(prefix + '.txt')
             i = data[:, 1].argsort()[::-1]
@@ -2406,7 +2419,7 @@ class MULTINEST:
             plt.savefig(prefix + 'Nest_trace.pdf', bbox_inches='tight')
             plt.close()
 
-            bound = _plotting_bounds(result)
+            bound = _plotting_bounds(result, gas_pos)
 
             if self.param['truths'] is not None:
                 tru = np.loadtxt(self.param['truths'])
@@ -2427,7 +2440,7 @@ class MULTINEST:
                 if self.param['plot_models']:
                     fl.write('chi-square (d.o.f) = ' + str(round(self.param['chi_square_stat']['chi2'], 2)) + ' (' + str(self.param['chi_square_stat']['dof']) + ')\n')
                     fl.write('Reduced chi-square = ' + str(round(self.param['chi_square_stat']['chi2_red'], 2)) + '\n')
-                fl.write('ln Z               = ' + str(round(Z, 2)) + '\n')
+                fl.write('ln Z               = ' + str(round(Z, 2)) + ' +- ' + str(round(nest_out['global_logE'][1], 2)) + '\n')
                 fl.write('\n')
                 fl.write('##################################################\n')
 
@@ -2437,7 +2450,7 @@ class MULTINEST:
             result = {}
 
             for modes in range(0, mds):
-                _posteriors_clr_to_vmr(prefix, modes=modes)
+                gas_pos = _posteriors_clr_to_vmr(prefix, modes=modes)
 
                 data = np.loadtxt(prefix + 'solution' + str(modes) + '.txt')
                 i = data[:, 1].argsort()[::-1]
@@ -2485,7 +2498,7 @@ class MULTINEST:
             except NameError:
                 figu = None
 
-            bound = _plotting_bounds(result, modes=mds)
+            bound = _plotting_bounds(result, gas_pos, modes=mds)
 
             for modes in range(0, mds):
                 if self.param['truths'] is not None:

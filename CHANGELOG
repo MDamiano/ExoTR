@@ -1,4 +1,16 @@
-## [1.3.1alpha0]
+## [1.4.2] - 2024-08-30
+- Updated opacity file.
+- Bugfixes.
+
+## [1.4.1] - 2024-08-25
+- If in the ExoTR folder it is present the "PHOENIX_models_light" folder, this will be used to calculate the stellar contribution. The star spectra are pre-calculated to be lighter making the code faster.
+- Minor improvements.
+- Bugfixes.
+
+## [1.4.0] - 2024-08-15
+- Rayleigh scattering calculation improved. It is now calculated for H2, N2, H2O, and CO2 and averaged based on the VMR of the aforementioned gases.
+- The volume mixing ratio of the gases are now 1D-arrays of the same length of the pressure grid. Previously, they where single values. The change does not affect input parameter files.
+- 'take_star_spectrum' function moved from '__utils' to '__forward'
 - Added support for more gases as free parameters (i.e., OCS).
 - Model errorbars can now be plotted in the 'NEST_spectrum' plot. Errorbars will automatically plot only if the key 'calc_likelihood_data' was set to True in the parameter file.
 

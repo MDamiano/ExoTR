@@ -1,8 +1,8 @@
 ![alt text](https://github.com/MDamiano/ExoTR/blob/main/ExoTR_logo.jpg?raw=true)
 
-Version 1.3.0
+Version 1.4.2
 
-A fully Bayesian inverse retrieval algorithm to interpret exoplanetary transmission spectra.
+A Bayesian inverse retrieval algorithm to interpret exoplanetary transmission spectra.
 
 Includes:
 * A generation of transmission spectra routine;
@@ -60,7 +60,7 @@ The plotting of the retrieval results is automatic and will produce the followin
 * Chemistry of the atmosphere versus the atmospheric pressure;
 * Mean molecular mass versus the atmospheric pressure;
 * The input spectral data and the best fit model calculated by the Bayesian sampling;
-* The contribution plot;
+* The spectral contribution plot;
 * The traces of the fitted free parameters;
 * The posterior distribution corner plot.
 
