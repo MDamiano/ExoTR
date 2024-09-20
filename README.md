@@ -4,11 +4,11 @@ Version 1.5.0
 
 A Bayesian inverse retrieval algorithm to interpret exoplanetary transmission spectra.
 
-<a href="https://emac.gsfc.nasa.gov?cid=2408-003"><img src="https://img.shields.io/badge/EMAC-2408--003-blue" alt="EMAC:2408.003" /></a>
-
 Includes:
 * A generation of transmission spectra routine;
 * A retrieval routine based on nested sampling (i.e. MultiNest).
+
+<a href="https://emac.gsfc.nasa.gov?cid=2408-003"><img src="https://img.shields.io/badge/EMAC-2408--003-blue" alt="EMAC:2408.003" /></a>
 
 ## Authors
 * [Mario Damiano](https://mdamiano.github.io/) (Jet Propulsion Laboratory, California Institute of Technology)
