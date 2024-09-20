@@ -1,5 +1,8 @@
 ![alt text](https://github.com/MDamiano/ExoTR/blob/main/ExoTR_logo.jpg?raw=true)
 
+<a href="https://emac.gsfc.nasa.gov?cid=2408-003"><img src="https://img.shields.io/badge/EMAC-2408--003-blue" alt="EMAC:2408.003" /></a>
+[![astropy](http://img.shields.io/badge/powered%20by-AstroPy-orange.svg?style=flat)](http://www.astropy.org/)
+
 Version 1.5.0
 
 A Bayesian inverse retrieval algorithm to interpret exoplanetary transmission spectra.
