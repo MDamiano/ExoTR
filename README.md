@@ -1,6 +1,6 @@
 ![alt text](https://github.com/MDamiano/ExoTR/blob/main/ExoTR_logo.jpg?raw=true)
 
-Version 1.4.2
+Version 1.5.0
 
 A Bayesian inverse retrieval algorithm to interpret exoplanetary transmission spectra.
 

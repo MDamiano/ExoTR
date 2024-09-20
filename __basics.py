@@ -2,6 +2,7 @@ import matplotlib
 
 matplotlib.use('agg')
 from scipy.interpolate import interp1d, interp2d, interpn, CubicSpline
+from skbio.stats.composition import clr_inv
 from astropy import constants as const
 import matplotlib.pyplot as plt
 from spectres import spectres

@@ -1,5 +1,3 @@
-import numpy as np
-
 from .__basics import *
 from .__utils import *
 from .__forward import *
@@ -59,7 +57,7 @@ class MULTINEST:
         self.param = param
         self.param = par_and_calc(self.param)
         self.param = load_input_spectrum(self.param)
-        self.param = pre_load_variables(param)
+        self.param = pre_load_variables(self.param)
         self.param = ranges(self.param)
 
     def run_retrieval(self):
@@ -91,8 +89,15 @@ class MULTINEST:
 
         parameters, n_params = retrieval_par_and_npar(self.param)
 
-        if len(self.param['fit_molecules']) > 0 and self.param['modified_clr_prior']:
-            ppf = define_modified_clr_prior(len(self.param['fit_molecules']))
+        if self.param['clr_prior'] not in ['uniform', 'modified', 'hybrid']:
+            if MPIimport and MPIsize > 1:
+                MPI.Finalize()
+            raise KeyError('Wrong value have been inserted for "clr_prior" in the parameter file.')
+
+        if len(self.param['fit_molecules']) > 0 and self.param['clr_prior'] != 'uniform':
+            if MPIrank == 0:
+                print('INFO - "' + self.param['clr_prior'] + '" has been selected as CLR prior functions')
+            ppf = define_modified_clr_prior(len(self.param['fit_molecules']), self.param['clr_prior'])
 
         def internal_model(cube, retrieval_mode=True):
             """
@@ -173,12 +178,10 @@ class MULTINEST:
                 try:
                     return forward(self.param, evaluation=evaluation, retrieval_mode=retrieval_mode)
                 except:
-                    if MPIimport:
+                    print('Some errors occurred in during the calculation of the forward model.')
+                    if MPIimport and MPIsize > 1:
                         MPI.Finalize()
-                        sys.exit()
-                    else:
-                        print('Some errors occurred in during the calculation of the forward model.')
-                        sys.exit()
+                    sys.exit()
 
         def prior(cube, ndim, nparams):
             """
@@ -250,7 +253,7 @@ class MULTINEST:
                 par += 2
 
             for _ in self.param['fit_molecules']:
-                if self.param['modified_clr_prior']:
+                if self.param['clr_prior'] == 'modified' or self.param['clr_prior'] == 'hybrid':
                     cube[par] = ppf(cube[par])  # modified prior for clr
                 else:
                     cube[par] = cube[par] * (self.param['gas_clr_range'][1] - self.param['gas_clr_range'][0]) + self.param['gas_clr_range'][0]  # standard clr range
@@ -335,6 +338,10 @@ class MULTINEST:
         ### PRODUCE PLOTS FROM HERE --- POST-PROCESSING ###
         self.param['model_n_par'] = len(parameters)
 
+        if self.param['extended_wl_plot']:
+            self.param = pre_load_variables(self.param, for_plotting=True)
+            self.param['light_star_mods'] = False
+
         multinest_results = pymultinest.Analyzer(n_params=self.param['model_n_par'], outputfiles_basename=prefix, verbose=False)
         mc_samp = multinest_results.get_equal_weighted_posterior()[:, :-1]
         mds = len(multinest_results.get_mode_stats()['modes'])
@@ -346,21 +353,22 @@ class MULTINEST:
                 MPI.COMM_WORLD.Barrier()  # wait for everybody to synchronize here
 
             if MPIimport and MPIrank == 0:
-                if platform.system() != 'Darwin':
-                    time.sleep(600)
+                time.sleep(300)
                 rank_0 = np.loadtxt(self.param['out_dir'] + 'loglikelihood_per_datapoint/loglike_0.dat')
                 rank_0_spec = np.loadtxt(self.param['out_dir'] + 'loglikelihood_per_datapoint/samples_0.dat')
+                rank_0_par = np.loadtxt(self.param['out_dir'] + 'loglikelihood_per_datapoint/samples_par_0.dat')
                 for i in range(1, MPIsize):
                     rank_n = np.loadtxt(self.param['out_dir'] + 'loglikelihood_per_datapoint/loglike_' + str(i) + '.dat')
                     rank_n_spec = np.loadtxt(self.param['out_dir'] + 'loglikelihood_per_datapoint/samples_' + str(i) + '.dat')
+                    rank_n_par = np.loadtxt(self.param['out_dir'] + 'loglikelihood_per_datapoint/samples_par_' + str(i) + '.dat')
                     rank_0 = np.concatenate((rank_0, rank_n), axis=0)
                     rank_0_spec = np.concatenate((rank_0_spec, rank_n_spec[:, 1:]), axis=1)
+                    rank_0_par = np.concatenate((rank_0_par, rank_n_par), axis=0)
                 np.savetxt(self.param['out_dir'] + 'loglike_per_datapoint.dat', rank_0)
                 np.savetxt(self.param['out_dir'] + 'random_samples.dat', rank_0_spec)
+                np.savetxt(self.param['out_dir'] + 'parameters_samples.dat', rank_0_par)
                 os.system('rm -rf ' + self.param['out_dir'] + 'loglikelihood_per_datapoint/')
-
-                self.param['spec_sample'] = rank_0_spec + 0.0
-                del rank_0_spec, rank_0
+                del rank_0_spec, rank_0, rank_0_par
 
         if MPIimport and MPIrank == 0:
             if self.param['plot_models']:
@@ -377,29 +385,53 @@ class MULTINEST:
                     # cube = np.array([cube, ]).T
 
                     s = multinest_results.get_stats()
-                    cube = np.ones((len(s['modes'][0]['maximum a posterior']), mds))
-                    cube[:, 0] = list(s['modes'][0]['maximum a posterior'])
+                    cube = np.ones((len(s['modes'][0]['mean']), mds))
+                    cube[:, 0] = list(s['modes'][0]['mean'])
 
                     self.plot_nest_spec(cube[:, 0])
                     if not self.param['bare_rock']:
                         self.plot_P_profiles()
                         self.plot_contribution()
+
+                    if self.param['fit_offset']:
+                        if self.param['spectrum']['bins']:
+                            data_spec = np.array([self.param['spectrum']['wl_low'][self.param['sorted_data_idx']], self.param['spectrum']['wl_high'][self.param['sorted_data_idx']], self.param['spectrum']['wl'][self.param['sorted_data_idx']], self.param['spectrum']['T_depth'][self.param['sorted_data_idx']], self.param['spectrum']['error_T'][self.param['sorted_data_idx']]]).T
+                        else:
+                            data_spec = np.array([self.param['spectrum']['wl'][self.param['sorted_data_idx']], self.param['spectrum']['T_depth'][self.param['sorted_data_idx']], self.param['spectrum']['error_T'][self.param['sorted_data_idx']]]).T
+                        np.savetxt(self.param['out_dir'] + 'data_spectrum_mean.dat', data_spec)
+
+                    cube[:, 0] = list(s['modes'][0]['maximum a posterior'])
+
+                    self.plot_nest_spec(cube[:, 0], MAP=True)
+                    if not self.param['bare_rock']:
+                        self.plot_contribution(MAP=True)
+                    if self.param['plot_elpd_stats']:
+                        self.elpd_loo_stats(parameters)
+
+                    if self.param['spectrum']['bins']:
+                        data_spec = np.array([self.param['spectrum']['wl_low'][self.param['sorted_data_idx']], self.param['spectrum']['wl_high'][self.param['sorted_data_idx']], self.param['spectrum']['wl'][self.param['sorted_data_idx']], self.param['spectrum']['T_depth'][self.param['sorted_data_idx']], self.param['spectrum']['error_T'][self.param['sorted_data_idx']]]).T
+                    else:
+                        data_spec = np.array([self.param['spectrum']['wl'][self.param['sorted_data_idx']], self.param['spectrum']['T_depth'][self.param['sorted_data_idx']], self.param['spectrum']['error_T'][self.param['sorted_data_idx']]]).T
+                    np.savetxt(self.param['out_dir'] + 'data_spectrum_MAP.dat', data_spec)
                 else:
                     s = multinest_results.get_mode_stats()
-                    cube = np.ones((len(s['modes'][0]['maximum a posterior']), mds))
+                    cube = np.ones((len(s['modes'][0]['mean']), mds))
                     for i in range(0, mds):
-                        cube[:, i] = list(s['modes'][i]['maximum a posterior'])
+                        cube[:, i] = list(s['modes'][i]['mean'])
 
                         self.plot_nest_spec(cube[:, i], solutions=i + 1)
                         if not self.param['bare_rock']:
                             self.plot_P_profiles(solutions=i + 1)
                             self.plot_contribution(solutions=i + 1)
 
-                if self.param['spectrum']['bins']:
-                    data_spec = np.array([self.param['spectrum']['wl_low'][self.param['sorted_data_idx']], self.param['spectrum']['wl_high'][self.param['sorted_data_idx']], self.param['spectrum']['wl'][self.param['sorted_data_idx']], self.param['spectrum']['T_depth'][self.param['sorted_data_idx']], self.param['spectrum']['error_T'][self.param['sorted_data_idx']]]).T
-                else:
-                    data_spec = np.array([self.param['spectrum']['wl'][self.param['sorted_data_idx']], self.param['spectrum']['T_depth'][self.param['sorted_data_idx']], self.param['spectrum']['error_T'][self.param['sorted_data_idx']]]).T
-                np.savetxt(self.param['out_dir'] + 'data_spectrum.dat', data_spec)
+                    for i in range(0, mds):
+                        cube[:, i] = list(s['modes'][i]['maximum a posterior'])
+
+                        self.plot_nest_spec(cube[:, i], solutions=i + 1, MAP=True)
+                        if not self.param['bare_rock']:
+                            self.plot_contribution(solutions=i + 1, MAP=True)
+                        if self.param['plot_elpd_stats']:
+                            self.elpd_loo_stats(parameters, solutions=i + 1)
 
             if self.param['plot_posterior']:
                 self.plot_posteriors(prefix, multinest_results, parameters, mds)
@@ -467,12 +499,13 @@ class MULTINEST:
             par += 2
 
         if not self.param['bare_rock']:
-            clr = {}
+            clogr = {}
             for i in self.param['fit_molecules']:
-                clr[i] = cube[par] + 0.0
+                clogr[i] = cube[par] + 0.0
                 par += 1
-            self.param = clr_to_vmr(self.param, clr)
-            self.param = cloud_pos(self.param)
+            self.param = clr_to_vmr(self.param, clogr)
+            if self.param['incl_clouds'] and self.param['cloud_type'] == 'water':
+                self.param = cloud_pos(self.param)
             self.param = calc_mean_mol_mass(self.param)
 
         if self.param['incl_star_activity']:
@@ -490,7 +523,7 @@ class MULTINEST:
                 self.param['Ts_phot'] = cube[par + 4] + 0.0
                 par += 5
 
-    def plot_nest_spec(self, cube, solutions=None):
+    def plot_nest_spec(self, cube, solutions=None, MAP=False):
         """
             Plots the observed and modeled spectral data.
 
@@ -501,6 +534,9 @@ class MULTINEST:
 
             solutions : int, optional
                 The specific solution number to be considered, if there are multiple solutions.
+
+            MAP : bool, optional
+                The solution to plot is the Maximum a Posteriori (MAP). True or False.
 
             Returns
             -------
@@ -521,41 +557,54 @@ class MULTINEST:
             else:
                 self.param['chi_square_stat']['solution_' + str(solutions)] = dict_stat
 
+        if not MAP:
+            print('\n#### GENERATING THE BEST FIT PLOTS (mean solution) ####')
+        else:
+            print('\n#### GENERATING THE BEST FIT PLOTS (MAP solution) ####')
         self.cube_to_param(cube)
         fig = plt.figure(figsize=(8, 5))
 
         plt.errorbar(self.param['spectrum']['wl'], self.param['spectrum']['T_depth']*1e6, yerr=self.param['spectrum']['error_T']*1e6,
-                     linestyle='', linewidth=0.5, color='black', marker='o', markerfacecolor='red', markersize=4, capsize=1.75, label='Data')
+                     linestyle='', linewidth=0.5, color='black', marker='o', markerfacecolor='red', markersize=4, capsize=1.75)
 
         _, model = forward(self.param, retrieval_mode=False)
         # plt.plot(self.param['spectrum']['wl'][self.param['sorted_data_idx']], model*1e6, linestyle='', color='black', marker='d', markerfacecolor='blue', markersize=4)
 
-        _chi_square_stat(np.array([self.param['spectrum']['wl'][self.param['sorted_data_idx']], self.param['spectrum']['T_depth'][self.param['sorted_data_idx']], self.param['spectrum']['error_T'][self.param['sorted_data_idx']]]).T, model)
+        if MAP:
+            _chi_square_stat(np.array([self.param['spectrum']['wl'][self.param['sorted_data_idx']], self.param['spectrum']['T_depth'][self.param['sorted_data_idx']], self.param['spectrum']['error_T'][self.param['sorted_data_idx']]]).T, model)
 
-        new_wl = np.loadtxt(self.param['pkg_dir'] + 'Data/wl_bins/bins_02_20_R500.dat')
+        if self.param['extended_wl_plot']:
+            new_wl = reso_range(self.param['min_wl'] - 0.05, 20, res=500, bins=True)
+            temp_max_wl = self.param['max_wl'] + 0.0
+            self.param['max_wl'] = 20.
+        else:
+            new_wl = reso_range(self.param['min_wl'] - 0.05, self.param['max_wl'] + 0.05, res=500, bins=True)
         new_wl_central = np.mean(new_wl, axis=1)
-        start = find_nearest(new_wl_central, min(self.param['spectrum']['wl']) - 0.05)
-        stop = find_nearest(new_wl_central, max(self.param['spectrum']['wl']) + 0.05)
         if self.param['spectrum']['bins']:
             temp = np.array([self.param['spectrum']['wl_low'], self.param['spectrum']['wl_high'], self.param['spectrum']['wl']]).T
         else:
             temp = self.param['spectrum']['wl'] + 0.0
-        self.param['spectrum']['wl'] = new_wl_central[start:stop]
-        self.param['spectrum']['wl_low'] = new_wl[start:stop, 0]
-        self.param['spectrum']['wl_high'] = new_wl[start:stop, 1]
+
+        self.param['spectrum']['wl'] = new_wl_central + 0.0
+        self.param['spectrum']['wl_low'] = new_wl[:, 0]
+        self.param['spectrum']['wl_high'] = new_wl[:, 1]
         temp_sorted_data_idx = copy.deepcopy(self.param['sorted_data_idx'])
         self.param['sorted_data_idx'] = np.argsort(self.param['spectrum']['wl'])
 
         wl, model = forward(self.param, retrieval_mode=False)
-        plt.plot(wl, model*1e6, color='#404784', label='MAP solution R=500')
+        if not MAP:
+            lab = 'Retrieved mean'
+        else:
+            lab = 'Retrieved maximum a posteriori'
+        plt.plot(wl, model*1e6, color='#404784', label=lab)
 
         best_fit = np.array([wl, model]).T
 
         if os.path.isfile(self.param['out_dir'] + 'random_samples.dat'):
             fl = np.loadtxt(self.param['out_dir'] + 'random_samples.dat')
-            plt.fill_between(fl[:, 0], (best_fit[:, 1] + (np.quantile(fl[:, 1:], [0.00135, 0.99865], axis=1)[1] - np.quantile(fl[:, 1:], 0.5, axis=1))) * 1e6, (best_fit[:, 1] + (np.quantile(fl[:, 1:], [0.00135, 0.99865], axis=1)[0] - np.quantile(fl[:, 1:], 0.5, axis=1))) * 1e6, ec=('#404784', 0.0), fc=('#404784', 0.25))
-            plt.fill_between(fl[:, 0], (best_fit[:, 1] + (np.quantile(fl[:, 1:], [0.0225, 0.9775], axis=1)[1] - np.quantile(fl[:, 1:], 0.5, axis=1))) * 1e6, (best_fit[:, 1] + (np.quantile(fl[:, 1:], [0.0225, 0.9775], axis=1)[0] - np.quantile(fl[:, 1:], 0.5, axis=1))) * 1e6, ec=('#404784', 0.0), fc=('#404784', 0.5))
-            plt.fill_between(fl[:, 0], (best_fit[:, 1] + (np.quantile(fl[:, 1:], [0.16, 0.84], axis=1)[1] - np.quantile(fl[:, 1:], 0.5, axis=1))) * 1e6, (best_fit[:, 1] + (np.quantile(fl[:, 1:], [0.16, 0.84], axis=1)[0] - np.quantile(fl[:, 1:], 0.5, axis=1))) * 1e6, ec=('#404784', 0.0), fc=('#404784', 0.75))
+            plt.fill_between(fl[:, 0], (best_fit[:, 1] + (np.quantile(fl[:, 1:], [0.00135, 0.99865], axis=1)[1] - np.quantile(fl[:, 1:], 0.5, axis=1))) * 1e6, (best_fit[:, 1] + (np.quantile(fl[:, 1:], [0.00135, 0.99865], axis=1)[0] - np.quantile(fl[:, 1:], 0.5, axis=1))) * 1e6, ec=('#404784', 0.0), fc=('#404784', 0.25), label='3$\sigma$')
+            plt.fill_between(fl[:, 0], (best_fit[:, 1] + (np.quantile(fl[:, 1:], [0.0225, 0.9775], axis=1)[1] - np.quantile(fl[:, 1:], 0.5, axis=1))) * 1e6, (best_fit[:, 1] + (np.quantile(fl[:, 1:], [0.0225, 0.9775], axis=1)[0] - np.quantile(fl[:, 1:], 0.5, axis=1))) * 1e6, ec=('#404784', 0.0), fc=('#404784', 0.5), label='2$\sigma$')
+            plt.fill_between(fl[:, 0], (best_fit[:, 1] + (np.quantile(fl[:, 1:], [0.16, 0.84], axis=1)[1] - np.quantile(fl[:, 1:], 0.5, axis=1))) * 1e6, (best_fit[:, 1] + (np.quantile(fl[:, 1:], [0.16, 0.84], axis=1)[0] - np.quantile(fl[:, 1:], 0.5, axis=1))) * 1e6, ec=('#404784', 0.0), fc=('#404784', 0.75), label='1$\sigma$')
 
             best_fit = np.concatenate((best_fit, np.array([best_fit[:, 1] + (np.quantile(fl[:, 1:], [0.16, 0.84], axis=1)[1] - np.quantile(fl[:, 1:], 0.5, axis=1))]).T), axis=1)
             best_fit = np.concatenate((best_fit, np.array([best_fit[:, 1] + (np.quantile(fl[:, 1:], [0.16, 0.84], axis=1)[0] - np.quantile(fl[:, 1:], 0.5, axis=1))]).T), axis=1)
@@ -566,29 +615,59 @@ class MULTINEST:
 
             del fl
 
-        if solutions is None:
-            np.savetxt(self.param['out_dir'] + 'Best_fit.dat', best_fit)
-        else:
-            np.savetxt(self.param['out_dir'] + 'Best_fit_(solution ' + str(solutions) + ').dat', best_fit)
-
         if self.param['spectrum']['bins']:
             self.param['spectrum']['wl'] = temp[:, 2]
             self.param['spectrum']['wl_low'] = temp[:, 0]
             self.param['spectrum']['wl_high'] = temp[:, 1]
         else:
             self.param['spectrum']['wl'] = temp + 0.0
+        if self.param['extended_wl_plot']:
+            self.param['max_wl'] = temp_max_wl + 0.0
 
         self.param['sorted_data_idx'] = copy.deepcopy(temp_sorted_data_idx)
 
-        plt.legend()
+        plt.legend(frameon=False)
         plt.xlabel('Wavelength [$\mu$m]')
         plt.ylabel('Transit depth (R$_p$/R$_{\star}$)$^2$ [ppm]')
         fig.tight_layout()
 
-        if solutions is None:
-            plt.savefig(self.param['out_dir'] + 'Nest_spectrum.pdf')
+        if self.param['extended_wl_plot']:
+            add_name = '_extended'
         else:
-            plt.savefig(self.param['out_dir'] + 'Nest_spectrum (solution ' + str(solutions) + ').pdf')
+            add_name = ''
+
+        if solutions is None:
+            if not MAP:
+                plt.savefig(self.param['out_dir'] + 'Nest_spectrum_mean' + add_name + '.pdf')
+                np.savetxt(self.param['out_dir'] + 'Best_fit_mean.dat', best_fit)
+            else:
+                plt.savefig(self.param['out_dir'] + 'Nest_spectrum_MAP' + add_name + '.pdf')
+                np.savetxt(self.param['out_dir'] + 'Best_fit_MAP.dat', best_fit)
+        else:
+            if not MAP:
+                plt.savefig(self.param['out_dir'] + 'Nest_spectrum_(solution ' + str(solutions) + ')_mean' + add_name + '.pdf')
+                np.savetxt(self.param['out_dir'] + 'Best_fit_(solution ' + str(solutions) + ')_mean.dat', best_fit)
+            else:
+                plt.savefig(self.param['out_dir'] + 'Nest_spectrum_(solution ' + str(solutions) + ')_MAP' + add_name + '.pdf')
+                np.savetxt(self.param['out_dir'] + 'Best_fit_(solution ' + str(solutions) + ')_MAP.dat', best_fit)
+
+        if self.param['extended_wl_plot']:
+            plt.xlim([self.param['spectrum']['wl'][self.param['sorted_data_idx']][0] - 0.05, self.param['spectrum']['wl'][self.param['sorted_data_idx']][-1] + 0.05])
+
+            if solutions is None:
+                if not MAP:
+                    plt.savefig(self.param['out_dir'] + 'Nest_spectrum_mean.pdf')
+                    np.savetxt(self.param['out_dir'] + 'Best_fit_mean.dat', best_fit)
+                else:
+                    plt.savefig(self.param['out_dir'] + 'Nest_spectrum_MAP.pdf')
+                    np.savetxt(self.param['out_dir'] + 'Best_fit_MAP.dat', best_fit)
+            else:
+                if not MAP:
+                    plt.savefig(self.param['out_dir'] + 'Nest_spectrum_(solution ' + str(solutions) + ')_mean.pdf')
+                    np.savetxt(self.param['out_dir'] + 'Best_fit_(solution ' + str(solutions) + ')_mean.dat', best_fit)
+                else:
+                    plt.savefig(self.param['out_dir'] + 'Nest_spectrum_(solution ' + str(solutions) + ')_MAP.pdf')
+                    np.savetxt(self.param['out_dir'] + 'Best_fit_(solution ' + str(solutions) + ')_MAP.dat', best_fit)
         plt.close()
 
     def plot_P_profiles(self, solutions=None):
@@ -609,6 +688,8 @@ class MULTINEST:
 
             Both plots are saved to the directory specified in `param['out_dir']`, with filenames based on whether `solutions` is provided.
         """
+        print('\n#### GENERATING ATMOSPHERIC PROFILES ####')
+
         ### CHEMISTRY ###
         fig, ax = plt.subplots()
 
@@ -738,7 +819,7 @@ class MULTINEST:
                 plt.savefig(self.param['out_dir'] + 'Tp (solution ' + str(solutions) + ').pdf')
         plt.close()
 
-    def plot_contribution(self, solutions=None):
+    def plot_contribution(self, solutions=None, MAP=False):
         """
             Plots the various contributions to the model result (e.g., different gas species, Rayleigh scattering, cloud effects, etc.)
 
@@ -758,20 +839,31 @@ class MULTINEST:
             -----
             The plot includes individual lines for each contribution, as well as the total model result and the observed data.
         """
-        if not os.path.exists(self.param['out_dir'] + 'Contr_spec/'):
-            os.mkdir(self.param['out_dir'] + 'Contr_spec/')
+        if not MAP:
+            print('\n#### GENERATING CONTRIBUTION PLOT (mean solution) ####')
+            if not os.path.exists(self.param['out_dir'] + 'Contr_spec_mean/'):
+                os.mkdir(self.param['out_dir'] + 'Contr_spec_mean/')
+            out_fldr = self.param['out_dir'] + 'Contr_spec_mean/'
+        else:
+            print('\n#### GENERATING CONTRIBUTION PLOT (MAP solution) ####')
+            if not os.path.exists(self.param['out_dir'] + 'Contr_spec_MAP/'):
+                os.mkdir(self.param['out_dir'] + 'Contr_spec_MAP/')
+            out_fldr = self.param['out_dir'] + 'Contr_spec_MAP/'
 
         fig = plt.figure(figsize=(12, 5))
 
-        new_wl = np.loadtxt(self.param['pkg_dir'] + 'Data/wl_bins/bins_02_20_R500.dat')
+        if self.param['extended_wl_plot']:
+            new_wl = reso_range(self.param['min_wl'] - 0.05, 20, res=500, bins=True)
+            tem_max_wl = self.param['max_wl'] + 0.0
+            self.param['max_wl'] = 20.
+        else:
+            new_wl = reso_range(self.param['min_wl'] - 0.05, self.param['max_wl'] + 0.05, res=500, bins=True)
         new_wl_central = np.mean(new_wl, axis=1)
         is_bins = self.param['spectrum']['bins']
         self.param['spectrum']['bins'] = False
-        start = find_nearest(new_wl_central, min(self.param['spectrum']['wl']) - 0.05)
-        stop = find_nearest(new_wl_central, max(self.param['spectrum']['wl']) + 0.05)
 
         temp_wl = self.param['spectrum']['wl'] + 0.0
-        self.param['spectrum']['wl'] = new_wl_central[start:stop]
+        self.param['spectrum']['wl'] = new_wl_central + 0.0
 
         temp_sorted_data_idx = copy.deepcopy(self.param['sorted_data_idx'])
         self.param['sorted_data_idx'] = np.argsort(self.param['spectrum']['wl'])
@@ -788,7 +880,7 @@ class MULTINEST:
             self.param['CIA_contribution'] = True
             wl, model = forward(self.param, retrieval_mode=False)
             comp = np.array([wl, model]).T
-            np.savetxt(self.param['out_dir'] + 'Contr_spec/contr_CIA.dat', comp)
+            np.savetxt(out_fldr + 'contr_CIA.dat', comp)
             self.param['CIA_contribution'] = False
 
             plt.plot(wl, model * 1e6, linestyle='--', label='H$_2$-H$_2$ CIA')
@@ -797,7 +889,7 @@ class MULTINEST:
         self.param['Rayleigh_contribution'] = True
         wl, model = forward(self.param, retrieval_mode=False)
         comp = np.array([wl, model]).T
-        np.savetxt(self.param['out_dir'] + 'Contr_spec/contr_Rayleigh.dat', comp)
+        np.savetxt(out_fldr + 'contr_Rayleigh.dat', comp)
         self.param['Rayleigh_contribution'] = False
 
         plt.plot(wl, model * 1e6, linestyle='--', label='Rayleigh scattering')
@@ -807,7 +899,7 @@ class MULTINEST:
             self.param['cld_contribution'] = True
             wl, model = forward(self.param, retrieval_mode=False)
             comp = np.array([wl, model]).T
-            np.savetxt(self.param['out_dir'] + 'Contr_spec/contr_cloud.dat', comp)
+            np.savetxt(out_fldr + 'contr_cloud.dat', comp)
             self.param['cld_contribution'] = False
 
             plt.plot(wl, model * 1e6, linestyle='--', label='Cloud')
@@ -817,7 +909,7 @@ class MULTINEST:
             self.param['haze_contribution'] = True
             wl, model = forward(self.param, retrieval_mode=False)
             comp = np.array([wl, model]).T
-            np.savetxt(self.param['out_dir'] + 'Contr_spec/contr_haze.dat', comp)
+            np.savetxt(out_fldr + 'contr_haze.dat', comp)
             self.param['haze_contribution'] = False
 
             plt.plot(wl, model * 1e6, linestyle='--', label='Haze')
@@ -827,7 +919,7 @@ class MULTINEST:
             self.param['star_act_contribution'] = True
             wl, model = forward(self.param, retrieval_mode=False)
             comp = np.array([wl, model]).T
-            np.savetxt(self.param['out_dir'] + 'Contr_spec/contr_star.dat', comp)
+            np.savetxt(out_fldr + 'contr_star.dat', comp)
             self.param['star_act_contribution'] = False
 
             plt.plot(wl, model * 1e6, linestyle='--', label='Star heterogeneity')
@@ -838,7 +930,7 @@ class MULTINEST:
             self.param[mol + '_contribution'] = True
             wl, model = forward(self.param, retrieval_mode=False)
             comp = np.array([wl, model]).T
-            np.savetxt(self.param['out_dir'] + 'Contr_spec/contr_' + mol + '.dat', comp)
+            np.savetxt(out_fldr + 'contr_' + mol + '.dat', comp)
             self.param[mol + '_contribution'] = False
 
             plt.plot(wl, model * 1e6, linewidth=0.5, label=mol)
@@ -857,6 +949,8 @@ class MULTINEST:
 
         self.param['spectrum']['wl'] = temp_wl + 0.0
         self.param['sorted_data_idx'] = copy.deepcopy(temp_sorted_data_idx)
+        if self.param['extended_wl_plot']:
+            self.param['max_wl'] = tem_max_wl + 0.0
 
         plt.errorbar(self.param['spectrum']['wl'], self.param['spectrum']['T_depth'] * 1e6, yerr=self.param['spectrum']['error_T'] * 1e6,
                      linestyle='', linewidth=0.5, color='black', marker='o', markerfacecolor='red', markersize=4, capsize=1.75, label='Data')
@@ -866,28 +960,56 @@ class MULTINEST:
         plt.ylabel('Transit depth (R$_p$/R$_{\star}$)$^2$')
         fig.tight_layout()
 
-        if solutions is None:
-            plt.savefig(self.param['out_dir'] + 'Contribution.pdf')
+        if self.param['extended_wl_plot']:
+            add_name = '_extended'
         else:
-            plt.savefig(self.param['out_dir'] + 'Contribution (solution ' + str(solutions) + ').pdf')
+            add_name = ''
+
+        if solutions is None:
+            if not MAP:
+                plt.savefig(self.param['out_dir'] + 'Contribution_mean' + add_name + '.pdf')
+            else:
+                plt.savefig(self.param['out_dir'] + 'Contribution_MAP' + add_name + '.pdf')
+        else:
+            if not MAP:
+                plt.savefig(self.param['out_dir'] + 'Contribution_(solution ' + str(solutions) + ')_mean' + add_name + '.pdf')
+            else:
+                plt.savefig(self.param['out_dir'] + 'Contribution_(solution ' + str(solutions) + ')_MAP' + add_name + '.pdf')
+
+        if self.param['extended_wl_plot']:
+            plt.xlim([self.param['spectrum']['wl'][self.param['sorted_data_idx']][0] - 0.05, self.param['spectrum']['wl'][self.param['sorted_data_idx']][-1] + 0.05])
+
+            if solutions is None:
+                if not MAP:
+                    plt.savefig(self.param['out_dir'] + 'Contribution_mean.pdf')
+                else:
+                    plt.savefig(self.param['out_dir'] + 'Contribution_MAP.pdf')
+            else:
+                if not MAP:
+                    plt.savefig(self.param['out_dir'] + 'Contribution_(solution ' + str(solutions) + ')_mean.pdf')
+                else:
+                    plt.savefig(self.param['out_dir'] + 'Contribution_(solution ' + str(solutions) + ')_MAP.pdf')
         plt.close()
 
         if is_bins:
             self.param['spectrum']['bins'] = True
 
     def calc_spectra(self, mc_samples):
-        new_wl = np.loadtxt(self.param['pkg_dir'] + 'Data/wl_bins/bins_02_20_R500.dat')
+        if self.param['extended_wl_plot']:
+            new_wl = reso_range(self.param['min_wl'] - 0.05, 20, res=500, bins=True)
+            temp_max_wl = self.param['max_wl'] + 0.0
+            self.param['max_wl'] = 20.
+        else:
+            new_wl = reso_range(self.param['min_wl'] - 0.05, self.param['max_wl'] + 0.05, res=500, bins=True)
         new_wl_central = np.mean(new_wl, axis=1)
-        start = find_nearest(new_wl_central, min(self.param['spectrum']['wl']) - 0.05)
-        stop = find_nearest(new_wl_central, max(self.param['spectrum']['wl']) + 0.05)
         wl_len = len(self.param['spectrum']['wl'])
         if self.param['spectrum']['bins']:
             temp = np.array([self.param['spectrum']['wl_low'], self.param['spectrum']['wl_high'], self.param['spectrum']['wl']]).T
         else:
             temp = self.param['spectrum']['wl'] + 0.0
-        self.param['spectrum']['wl'] = new_wl_central[start:stop] + 0.0
-        self.param['spectrum']['wl_low'] = new_wl[start:stop, 0] + 0.0
-        self.param['spectrum']['wl_high'] = new_wl[start:stop, 1] + 0.0
+        self.param['spectrum']['wl'] = new_wl_central + 0.0
+        self.param['spectrum']['wl_low'] = new_wl[:, 0] + 0.0
+        self.param['spectrum']['wl_high'] = new_wl[:, 1] + 0.0
         temp_sorted_data_idx = copy.deepcopy(self.param['sorted_data_idx'])
         self.param['sorted_data_idx'] = np.argsort(self.param['spectrum']['wl'])
 
@@ -896,12 +1018,13 @@ class MULTINEST:
         else:
             pass
 
+        sample_par = np.zeros((1, self.param['model_n_par']))
         samples = np.zeros((len(self.param['spectrum']['wl']), int(self.param['n_likelihood_data'] / MPIsize) + 1))
         samples[:, 0] = self.param['spectrum']['wl']
         loglike_data = np.zeros((int(self.param['n_likelihood_data'] / MPIsize), wl_len))
 
         if MPIrank == 0:
-            print('\nCalculating the likelihood per data point')
+            print('\n#### CALCULATING THE LIKELIHOOD PER DATAPOINT ####')
             try:
                 os.mkdir(self.param['out_dir'] + 'loglikelihood_per_datapoint/')
             except OSError:
@@ -912,6 +1035,7 @@ class MULTINEST:
         for i in range(int(self.param['n_likelihood_data'] / MPIsize)):
             out_cube = mc_samples[idx[i], :]
             self.cube_to_param(out_cube)
+            sample_par = np.concatenate((sample_par, np.array(out_cube).reshape(1, self.param['model_n_par'])), axis=0)
 
             _, samples[:, i + 1] = forward(self.param, retrieval_mode=False)
 
@@ -926,6 +1050,7 @@ class MULTINEST:
 
         np.savetxt(self.param['out_dir'] + 'loglikelihood_per_datapoint/loglike_' + str(MPIrank) + '.dat', loglike_data)
         np.savetxt(self.param['out_dir'] + 'loglikelihood_per_datapoint/samples_' + str(MPIrank) + '.dat', samples)
+        np.savetxt(self.param['out_dir'] + 'loglikelihood_per_datapoint/samples_par_' + str(MPIrank) + '.dat', sample_par[1:, :])
 
         if self.param['spectrum']['bins']:
             self.param['spectrum']['wl'] = temp[:, 2] + 0.0
@@ -933,6 +1058,8 @@ class MULTINEST:
             self.param['spectrum']['wl_high'] = temp[:, 1] + 0.0
         else:
             self.param['spectrum']['wl'] = temp + 0.0
+        if self.param['extended_wl_plot']:
+            self.param['max_wl'] = temp_max_wl + 0.0
 
         self.param['sorted_data_idx'] = copy.deepcopy(temp_sorted_data_idx)
 
@@ -1044,22 +1171,14 @@ class MULTINEST:
                     mmm = volume_mixing_ratio[self.param['gas_fill']] * self.param['mm'][self.param['gas_fill']]
                     b[:, z + i + 1] = np.array(mmm) + 0.0
                 else:
-                    centered_log_ratio = {}
-                    mol_indx = z + 0
-                    for mol in self.param['fit_molecules']:
-                        centered_log_ratio[mol] = np.array(a[:, mol_indx])
-                        mol_indx += 1
-                    centered_log_ratio[self.param['gas_fill']] = np.zeros(len(a[:, 0]))
+                    clr_mtrx = np.zeros((len(a[:, 0]), len(self.param['fit_molecules']) + 1))
+                    for i in range(0, len(self.param['fit_molecules'])):
+                        clr_mtrx[:, i] = np.array(a[:, z + i])
+                    clr_mtrx[:, -1] = -np.sum(clr_mtrx[:, :-1], axis=1)
+                    vmr_mtrx = clr_inv(clr_mtrx)
 
-                    sumb = np.zeros(len(a[:, 0]))
-                    for mol in self.param['fit_molecules']:
-                        centered_log_ratio[self.param['gas_fill']] -= centered_log_ratio[mol]
-                        sumb += np.exp(centered_log_ratio[mol])
-                    sumb += np.exp(centered_log_ratio[self.param['gas_fill']])
-
-                    for mol in centered_log_ratio.keys():
-                        volume_mixing_ratio[mol] = np.exp(centered_log_ratio[mol]) / sumb
-                    del centered_log_ratio, sumb
+                    for i, mol in enumerate(self.param['fit_molecules'] + [self.param['gas_fill']]):
+                        volume_mixing_ratio[mol] = vmr_mtrx[:, i]
 
                     mmm = np.zeros(len(a[:, 0]))
                     for mol in volume_mixing_ratio.keys():
@@ -2269,24 +2388,6 @@ class MULTINEST:
 
                 n, b, _ = ax.hist(x, bins=75, weights=weights, color=color, range=np.sort(span[i]), **hist_kwargs)
 
-                # if isinstance(sx, int_type):
-                #     # If `sx` is an integer, plot a weighted histogram with
-                #     # `sx` bins within the provided bounds.
-                #     n, b, _ = ax.hist(x, bins=sx, weights=weights, color=color,
-                #                       range=np.sort(span[i]), **hist_kwargs)
-                # else:
-                #     # If `sx` is a float, oversample the data relative to the
-                #     # smoothing filter by a factor of 10, then use a Gaussian
-                #     # filter to smooth the results.
-                #     bins = int(round(10. / sx))
-                #     n, b = np.histogram(x, bins=bins, weights=weights,
-                #                         range=np.sort(span[i]))
-                #     n = norm_kde(n, 10.)
-                #     b0 = 0.5 * (b[1:] + b[:-1])
-                #     n, b, _ = ax.hist(b0, bins=b, weights=n,
-                #                       range=np.sort(span[i]), color=color,
-                #                       **hist_kwargs)
-
                 if ax.get_ylim()[1] < max(n) * 1.05:
                     ax.set_ylim([0., max(n) * 1.05])
                 else:
@@ -2396,7 +2497,7 @@ class MULTINEST:
 
             return fig, axes
 
-        print('Generating the Posterior Distribution Functions (PDFs) plot')
+        print('\n#### GENERATING THE POSTERIOR DISTRIBUTION FUNCTIONS ####')
         _corner_parameters()
         if mds < 2:
             nest_out = _store_nest_solutions()
@@ -2482,7 +2583,7 @@ class MULTINEST:
                 plt.close()
 
             for modes in range(0, mds):
-                bound = _plotting_bounds(result[str(modes)], modes=None)
+                bound = _plotting_bounds(result[str(modes)], gas_pos, modes=None)
                 if self.param['truths'] is not None:
                     tru = np.loadtxt(self.param['truths'])
                     cornerplot(result[str(modes)], labels=parameters, show_titles=True, truths=list(tru), color=colors[modes], span=bound)

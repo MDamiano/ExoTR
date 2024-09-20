@@ -4,7 +4,7 @@ from .__forward import *
 
 path = os.path.abspath(__file__)
 pkg_dir = os.path.dirname(path) + '/'
-param = take_standard_parameters(pkg_dir)
+param = default_parameters()
 param['pkg_dir'] = pkg_dir
 
 
@@ -97,7 +97,6 @@ class CREATE_SPECTRUM:
         self.param = read_parfile(self.param, parfile)
         self.param = par_and_calc(self.param)
         self.param = load_input_spectrum(self.param)
-        self.param = pre_load_variables(param)
 
         if param['incl_star_activity'] and param['st_frac'] is None:
             raise KeyError('If you want to include the star activity in the calculation, please specify the fraction of the star covered by the activity through the parameter "st_frac"')
@@ -148,7 +147,10 @@ class CREATE_SPECTRUM:
         except KeyError:
             self.param['gp'] = (const.G.value * const.M_earth.value * param['Mp']) / ((const.R_earth.value * param['Rp']) ** 2.)  # g is in m/s2
             print('g \t\t = \t' + str(self.param['gp']))
-        print('T \t\t = \t' + str(self.param['Tp']))
+        if self.param['Tp'] is not None:
+            print('T \t\t = \t' + str(self.param['Tp']))
+        else:
+            print('T \t\t = \t' + 'from file')
 
         self.param['fit_molecules'] = []
         for mol in self.param['supported_molecules']:
@@ -174,10 +176,10 @@ class CREATE_SPECTRUM:
                 else:
                     pass
 
+        self.param = pre_load_variables(self.param)
+        
         time1 = time.time()
-
         wl, model = forward(self.param, retrieval_mode=self.param['ret_mode'])
-
         time2 = time.time()
 
         if self.verbose:

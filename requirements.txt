@@ -3,3 +3,4 @@ scipy
 astropy
 matplotlib
 spectres
+scikit-bio

@@ -1,5 +1,25 @@
+## [1.5.0] - 2024-09-13
+- Added the function '__utils.readcross(fname)' to read the cross sections with the '.dat' format.
+- Introduced newly calculated cross sections at 200k and 10k spectral resolution.
+- New key in the parameter file allow you to choose which cross sections to use. The key is 'opac_data'. The default value is 'mat'. It can be set to '200k' and '10k' to use the relative cross sections.
+- If the planetary temperature is not a free parameter, the molecular cross-sections are pre calculated in '__utils.pre_load_variables(param)' function. Otherwise, they need to be calculated in '__forward.atmospheric_structure()'.
+- The opacities/cross-sections are now tailored in wavelength to the specific problem that is being analyzed, i.e., the wavelength grid is selected based on the minimum and maximum value of the input spectrum.
+
+## [1.4.5] - 2024-09-10
+- The calc_mean_mol_mass would in some conditions assign a negative value to the filling gas.
+- Added 'hybrid' as possibility for the CLR prior. It is a hybrid between the 'modified' and 'uniform' priors.
+- Removed 'modified_clr_prior' as key entry in the parameter file. Replaced by 'clr_prior' that can assume 3 different values: 'uniform', 'modified', and 'hybrid'.
+- Introduction of the package 'skbio'. Replaced '__utils.clr_to_vmr'.
+- Deprecated the 'standard_parameters.dat'. Replaced with '__utils.standard_parameters()'.
+- Many optimizations and bugfixes.
+
+## [1.4.4] - 2024-09-07
+- Fixed Rayleigh scattering calculation that would return NaNs if main gases are not fitted nor gas fill.
+- __forward.py hotfix in the total opacity of transit path calculation.
+
 ## [1.4.2] - 2024-08-30
 - Updated opacity file.
+- The best fit model is now saved in a file ("Best_fit.dat") together with 1, 2, and 3 sigmas confidence regions.
 - Bugfixes.
 
 ## [1.4.1] - 2024-08-25

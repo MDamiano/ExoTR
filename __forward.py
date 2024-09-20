@@ -14,7 +14,7 @@ class FORWARD_MODEL:
     def __init__(self, param):
         self.param = param
         self.package_dir = param['pkg_dir']
-        self.param['Ray_scat_mol'] = ['H2O', 'CO2', 'N2', 'H2']
+        self.param['Ray_scat_mol'] = ['H2O', 'CH4', 'NH3', 'SO2', 'CO', 'CO2', 'N2O', 'N2', 'He', 'H2']
         try:
             self.working_dir = param['wkg_dir']
         except KeyError:
@@ -48,9 +48,24 @@ class FORWARD_MODEL:
                     refidx = 1 + 6.8552e-5 + 3.243157e-2 / (144.0 - ((self.param['opacw'][0] * 1e6) ** (-2.0)))
                 elif gas == 'H2O':
                     refidx = np.full(len(self.param['opacw'][0] * 1e6), 1.000261)
+                elif gas == 'CH4':
+                    refidx = np.full(len(self.param['opacw'][0] * 1e6), 1.000444)
+                elif gas == 'NH3':
+                    refidx = np.full(len(self.param['opacw'][0] * 1e6), 1.000376)
+                elif gas == 'CO':
+                    refidx = np.full(len(self.param['opacw'][0] * 1e6), 1.000338)
                 elif gas == 'CO2':
-                    w = 1.0 / ((self.param['opacw'][0] * 1e6) ** 2.)
+                    l = self.param['opacw'][0] * 1e6
+                    l[np.where(l > 1.8)[0]] = 1.8
+                    l[np.where(l < 0.48)[0]] = 0.48
+                    w = 1.0 / (l ** 2.)
                     refidx = 1 + 1e-5 * (0.154489 / (0.0584738 - w) + 8309.1927 / (210.92417 - w) + 287.64190 / (60.122959 - w))
+                elif gas == 'N2O':
+                    refidx = np.full(len(self.param['opacw'][0] * 1e6), 1.000516)
+                elif gas == 'SO2':
+                    refidx = np.full(len(self.param['opacw'][0] * 1e6), 1.000646)
+                elif gas == 'He':
+                    refidx = 1 + 0.01470091 / (423.98 - (self.param['opacw'][0] * 1e6) ** (-2.0))
 
                 refidx[np.where(refidx < 1)[0]] = 1.0
                 ray_crs = 1.061 * 8.0 * np.pi ** 3 * ((refidx ** 2) - 1) ** 2 / 3.0 / (self.param['opacw'][0] ** 4) / DenS / DenS
@@ -73,11 +88,15 @@ class FORWARD_MODEL:
         for i in range(0, len(P)):
             T[i] = min(max(100.0, T[i]), 2000.0)
 
-        fH2O = np.array([self.param['vmr_H2O'][::-1]]).T
-        mu = np.array([self.param['mean_mol_weight'][::-1]]).T
         n = len(P[:, 0])
-        Z, g = np.zeros_like(P), np.zeros_like(P)
 
+        # Atmospheric Composition
+        vmr = {}
+        for mol in self.param['fit_molecules'] + [self.param['gas_fill']]:
+            vmr[mol] = (self.param['vmr_' + mol][::-1]).reshape(n, 1)
+        mu = np.array([self.param['mean_mol_weight'][::-1]]).T
+
+        Z, g = np.zeros_like(P), np.zeros_like(P)
         for i in range(1, n):
             g[i - 1, 0] = 6.674E-11 * M0 / ((R0 + Z[i - 1, 0]) ** 2.0)
             H = 1.38E-23 * (T[i - 1, 0] + T[i, 0]) / (mu[i - 1, 0] + mu[i, 0]) / g[i - 1, 0] / 1.66E-27
@@ -86,60 +105,59 @@ class FORWARD_MODEL:
         g[-1] = g[-2] - (g[-3] - g[-2])
 
         g = np.array([g[:-1, 0]]).T
-        PL = np.array([np.sqrt(P[0:n - 1, 0] * P[1:n, 0])]).T
-        TL = np.array([(T[0:n - 1, 0] + T[1:n, 0]) / 2.0]).T
         mul = np.array([(mu[0:n - 1, 0] + mu[1:n, 0]) / 2.0]).T
+        if self.param['fit_T']:
+            PL = np.array([np.sqrt(P[0:n - 1, 0] * P[1:n, 0])]).T
+            TL = np.array([(T[0:n - 1, 0] + T[1:n, 0]) / 2.0]).T
+        else:
+            PL = self.param['forward']['PL'] + 0.0
+            TL = self.param['forward']['TL'] + 0.0
         NL = PL / const.k_B.value / TL
 
-        I1 = np.array([np.ones(len(PL))]).T
+        I1 = np.ones(len(PL)).reshape(len(PL), 1)
         I2 = np.ones(len(self.param['opacw'][0]))
 
-        N = {'H2O': NL * np.sqrt(fH2O[0:n - 1] * fH2O[1:n])}
-        for mol in self.param['fit_molecules']:
-            if mol != 'H2O':
-                N[mol] = NL * self.param['vmr_' + mol][:-1].reshape(np.shape(I1))
-        ffill = np.array([self.param['vmr_' + self.param['gas_fill']][::-1]]).T
-        N[self.param['gas_fill']] = NL * np.sqrt(ffill[0:n - 1] * ffill[1:n])
-
-        # Get molecular opacities
-        S = {}
-        if len(self.param['fit_molecules']) < 1 or 'H2O' not in self.param['fit_molecules']:
-            S['H2O'] = (interpn((self.param['opacp'][0], self.param['opact'][0], self.param['opacw'][0]), self.param['opach2o'], np.array([PL * I2, TL * I2, I1 * self.param['opacw'][0]]).T)).T
+        N = {}
         for mol in self.param['fit_molecules'] + [self.param['gas_fill']]:
-            if mol == 'N2' or mol == 'H2':
-                S[mol] = np.zeros_like(S['H2O'])
-            else:
-                S[mol] = (interpn((self.param['opacp'][0], self.param['opact'][0], self.param['opacw'][0]), self.param['opac' + mol.lower()], np.array([PL * I2, TL * I2, I1 * self.param['opacw'][0]]).T)).T
+            N[mol] = NL * np.sqrt(vmr[mol][0:n - 1] * vmr[mol][1:n])
 
-        op = np.zeros_like(S['H2O'] * (N['H2O'] * I2))
+        if self.param['fit_T']:
+            # Calculate molecular opacities
+            self.param['forward'] = {'S': {}}
+            for mol in self.param['fit_molecules'] + [self.param['gas_fill']]:
+                self.param['forward']['S'][mol] = (interpn((self.param['opacp'][0], self.param['opact'][0], self.param['opacw'][0]), self.param['opac' + mol.lower()], np.array([PL * I2, TL * I2, I1 * self.param['opacw'][0]]).T)).T
+        else:
+            pass
+
+        op = np.zeros_like(I1 * I2)
 
         # CIA opacity
         (self.param['opaclc']).T[0][0] = 1e-7
         SCIA = (interpn(((self.param['opaclc']).T[0], self.param['opactc'][0]), self.param['opaccia'], np.array([I1 * self.param['opacw'][0], TL * I2]).T) * 1e-10).T
         if self.param['gas_fill'] == 'H2' and self.param['CIA_contribution']:
-            op += SCIA * (N['H2'] * I2) * (N['H2'] * I2) * 0.8
+            op += (SCIA * (N['H2'] * I2) * (N['H2'] * I2) * 0.8)
 
         # Rayleigh opacity
         if self.param['Rayleigh_contribution']:
-            SR = np.zeros(np.shape(I1 * self.param['opacw'][0]))
-            tot_vmr_cr = np.zeros(np.shape(SR))
+            SR = np.zeros_like(I1 * I2)
+            tot_vmr_cr = np.zeros_like(I1 * I2)
             for mol in self.param['fit_molecules'] + [self.param['gas_fill']]:
                 if mol in self.param['Ray_scat_mol']:
                     SR += (self.param['vmr_' + mol][:-1].reshape(np.shape(I1)) * Ray_cross(mol))
-                    for j in range(len(self.param['opacw'][0])):
-                        tot_vmr_cr[:, j] += self.param['vmr_' + mol][:-1]
+                    tot_vmr_cr += (np.sqrt(vmr[mol][0:n - 1] * vmr[mol][1:n]) * I2)
                 else:
                     pass
 
-            SR /= tot_vmr_cr
+            if np.sum(tot_vmr_cr) != 0.0:
+                SR /= tot_vmr_cr
 
             # SR = I1 * 8.49e-45 * (self.param['opacw'][0] * 100.0) ** (-4.0) * 1e-4
-            op += SR * (NL * I2)
+            op += (SR * (NL * I2))
 
         # Opacity of Atmosphere(m^-1)
         for mol in self.param['fit_molecules'] + [self.param['gas_fill']]:
             if self.param[mol + '_contribution']:
-                op += S[mol] * (N[mol] * I2)
+                op += (self.param['forward']['S'][mol] * (N[mol] * I2))
             else:
                 pass
 
@@ -152,7 +170,7 @@ class FORWARD_MODEL:
                 # Particle Size
                 RA, VP, DA = np.zeros(len(PL)), np.zeros(len(PL)), np.zeros(len(PL))
                 for i in range(0, len(PL)):
-                    _, _, RA[i], VP[i] = particlesizef(g[i], TL[i], PL[i], mul[i], 18.0, 10.0, 0.01 * N['H2O'][i] / NL[i] * PL[i])
+                    _, _, RA[i], VP[i] = self.particlesizef(g[i], TL[i], PL[i], mul[i], 18.0, 10.0, 0.01 * N['H2O'][i] / NL[i] * PL[i])
                     DA[i] = max(min(2.0 * RA[i], 100), 0.1)
 
                 # Opacity
@@ -164,7 +182,7 @@ class FORWARD_MODEL:
 
                 # Mass
                 VI = np.array([VP * 1e-3]).T
-                NA = (fH2O[0:n - 1] - fH2O[1:n]) * 0.018 * PL / 8.3144621 / TL / VI
+                NA = (vmr['H2O'][0:n - 1] - vmr['H2O'][1:n]) * 0.018 * PL / const.R.value / TL / VI
 
                 op += (SAER * (NA * I2))
         else:
@@ -180,46 +198,135 @@ class FORWARD_MODEL:
             N_haze = f_haze * NL * const.u.value * mul / (4 / 3 * math.pi * (d_haze / 2 / 1e6) ** 3 * 800)
             op += (S_haze * (N_haze * I2))
 
-        w = self.param['opacw']
         # Total Opacity of Transit Path
-        ta = np.zeros((n, len(w[0])))
+        ta = np.zeros((n, len(self.param['opacw'][0])))
         for i in range(0, n - 1):
             ta[i, :] = 2.0 * op[i, :] * np.sqrt(2.0 * (Z[i + 1] - Z[i]) * (R0 + Z[i + 1]))
             for ip in range(i + 1, n - 1):
                 dx = (Z[ip + 1] - Z[ip]) * (R0 + Z[ip]) / np.sqrt((Z[ip] - Z[i]) * (2 * R0 + Z[i] + Z[ip]))
-                ta[i, :] = ta[i, :] + (2.0 * op[i, :] * dx)
+                ta[i, :] = ta[i, :] + (2.0 * op[ip, :] * dx)
 
         # Apparent size of Planet
-        sp = (math.pi * (R0 ** 2.0)) + np.zeros_like(w)
+        sp = (math.pi * (R0 ** 2.0)) + np.zeros_like(self.param['opacw'])
         for i in range(1, n - 1):
             # sp += 2 * math.pi * (Z[i + 1] - Z[i]) * (R0 + Z[i]) * (1 - (np.exp(-ta[i]) + np.exp(-ta[i + 1])) / 2)
-            sp = sp + (2.0 * math.pi * (Z[i + 1] - Z[i]) * (R0 + Z[i]) * (1.0 - (np.exp(-ta[i, :]) + np.exp(-ta[i + 1, :])) / 2.0))
+            sp += (2.0 * math.pi * (Z[i + 1] - Z[i]) * (R0 + Z[i]) * (1.0 - (np.exp(-ta[i, :]) + np.exp(-ta[i + 1, :])) / 2.0))
 
         # Transit Depth
         de = sp / math.pi / (RS ** 2.0)
 
-        return w[0] * 1000000., de[0]
+        return self.param['opacw'][0] * 1000000., de[0]
+
+    def particlesizef(self, g, T, P, M, MM, KE, deltaP):
+        """
+            Calculate particle size in exoplanet atmospheres using various input parameters.
+
+            Parameters:
+            g (float): Gravity in SI units (m/s^2).
+            T (float): Temperature in Kelvin.
+            P (float): Pressure in Pascal.
+            M (float): Mean molecular mass of the atmosphere in g/mol.
+            MM (float): Molecular mass of the condensable species in g/mol.
+            KE (float): Eddy diffusion coefficient in m^2/s.
+            deltaP (float): Difference between partial pressure and saturation vapor pressure in Pa.
+
+            Returns:
+            r0 (float): Mode radius of the droplet size distribution.
+            r1 (float): Radius of the droplet for the lower quartile of the distribution.
+            r2 (float): Radius of the droplet for the upper quartile of the distribution.
+            VP (float): Volume of the droplet in cm^3.
+
+            The function uses a number of hard-coded constants and assumptions, such as
+            the density of the condensed material of water (1000 kg/m^3), the accomodation
+            factor (1), and the width of the log-normal size distribution (2). The output
+            particle size is in microns, and the volume is in cm^3.
+        """
+        # Calculate particle size in exoplanet atmospheres
+
+        # input
+        # g in SI
+        # T in K
+        # P in Pa
+        # M: mean molecular mass of the atmosphere; in g / mol
+        # MM: molecular mass of the condensable species; in g / mol
+        # KE: Eddy diffusion coefficient; in m2 s - 1
+        # deltaP: difference between partial pressure and saturation vapor
+        # pressure, in Pa
+
+        # assume
+        # density of condensed material of water 1000 kg / m3
+        # accomodation factor of unity
+        # sig = 2
+
+        # output particle size in micron, and volumn in cm ^ 3
+
+        # Derived parameters
+        H = (const.k_B.value * T) / M / const.u.value / g
+        u = KE / H
+        mu = ((8.76E-6 * (293.85 + 72)) / (293.85 + 72)) * ((T / 293.85) ** 1.5)  # SI
+        lamb = (2. * mu) / P / ((8 * M * 1.0E-3 / math.pi / 8.314472 / T) ** 0.5)  # m
+        # KK = 4 * KB * T / 3. / mu
+        deltan = deltaP / const.k_B.value / T
+
+        # droplet
+        rho = 1.0E+3  # kg m-3
+        acc = 1.0
+
+        # mass diffusion coefficient
+        D = 0.12E-4
+
+        # Particle Size and Number
+        Cc, fa = 1, 1
+        Cc1, fa1 = 2, 2
+        sig = 2
+
+        check = 0
+        while (abs(Cc1 - Cc) + abs(fa1 - fa)) > 0.001:
+            Cc = Cc1
+            fa = fa1
+            cc = -((48. * math.pi ** 2.) ** (1. / 3.)) * D * MM * const.u.value * fa * deltan / rho * np.exp(- np.log(sig) ** 2.)  # effective condensation coefficient D
+            aa = rho * g / mu / ((162. * math.pi ** 2.) ** (1. / 3.)) / H * Cc * np.exp(- np.log(sig) ** 2.)
+            bb = -u / H
+
+            V = ((-bb + np.sqrt((bb ** 2.) - (4. * aa * cc))) / 2. / aa) ** (3. / 2.)
+            d1 = ((6. * V / math.pi) ** (1. / 3.)) * np.exp(- np.log(sig) ** 2.)
+
+            kn = lamb / d1
+            Cc1 = 1. + kn * (1.257 + 0.4 * np.exp(- 1.1 / kn))
+            fa1 = (1. + kn) / (1. + 2. * kn * (1. + kn) / acc)
+
+            Vs = V + 0.0
+            check += 1
+            if check > 1e4:
+                break
+
+        r0 = (3. * Vs / 4. / math.pi) ** (1. / 3.) * np.exp(- 1.5 * np.log(sig) ** 2.) * 1.0E+6
+        r1 = (3. * Vs / 4. / math.pi) ** (1. / 3.) * np.exp(- 1.0 * np.log(sig) ** 2.) * 1.0E+6
+        r2 = (3. * Vs / 4. / math.pi) ** (1. / 3.) * np.exp(- 0.5 * np.log(sig) ** 2.) * 1.0E+6
+        VP = Vs * 1.0E+6
+
+        return r0, r1, r2, VP
 
     def stellar_activity(self):
-        def take_star_spectrum(param, Ts, meta=None):
+        def take_star_spectrum(Ts, meta=None):
             # PHOENIX STELLAR SPECTRA FROM : http://svo2.cab.inta-csic.es/theory/newov2/index.php
 
             def resize(fl, final=False):
-                wl_temp = reso_range(0.85 * param['min_wl'], 1.1 * param['max_wl'], res=20000, bins=False)
+                wl_temp = reso_range(0.85 * self.param['min_wl'], 1.1 * self.param['max_wl'], res=20000, bins=False)
                 if not final:
-                    idx_start = find_nearest(fl[:, 0] * (10. ** -4.), 0.8 * param['min_wl'])
-                    idx_stop = find_nearest(fl[:, 0] * (10. ** -4.), 1.15 * param['max_wl'])
+                    idx_start = find_nearest(fl[:, 0] * (10. ** -4.), 0.8 * self.param['min_wl'])
+                    idx_stop = find_nearest(fl[:, 0] * (10. ** -4.), 1.15 * self.param['max_wl'])
                     return spectres(wl_temp, fl[idx_start:idx_stop, 0] * (10. ** -4.), fl[idx_start:idx_stop, 1], fill=False)
                 else:
-                    if param['light_star_mods']:
+                    if self.param['light_star_mods']:
                         wl_temp = reso_range(0.5, 5.5, res=20000, bins=False)
-                    return spectres(param['spectrum']['wl'][param['sorted_data_idx']], wl_temp, fl, fill=False)
+                    return spectres(self.param['spectrum']['wl'][self.param['sorted_data_idx']], wl_temp, fl, fill=False)
 
-            if not param['light_star_mods']:
-                directory = param['pkg_dir'] + 'PHOENIX_models/'
+            if not self.param['light_star_mods']:
+                directory = self.param['pkg_dir'] + 'PHOENIX_models/'
                 skp_hdr = 6
             else:
-                directory = param['pkg_dir'] + 'PHOENIX_models_light/'
+                directory = self.param['pkg_dir'] + 'PHOENIX_models_light/'
                 skp_hdr = 0
 
             t_star = round(float(Ts), -2)
@@ -251,16 +358,16 @@ class FORWARD_MODEL:
                     t_star2 = str(int(t_star2 / 100))
 
             try:
-                param['Loggs'] += 0.0
+                self.param['Loggs'] += 0.0
             except KeyError:
-                param['Loggs'] = np.log10(const.G.value * (param['Ms'] * const.M_sun.value) / ((param['Rs'] * const.R_sun.value) ** 2.)) + 2
+                self.param['Loggs'] = np.log10(const.G.value * (self.param['Ms'] * const.M_sun.value) / ((self.param['Rs'] * const.R_sun.value) ** 2.)) + 2
 
-            loggs = round(param['Loggs'] * 2.) / 2.
+            loggs = round(self.param['Loggs'] * 2.) / 2.
             interp_loggs = True
-            if loggs - param['Loggs'] < 0:
+            if loggs - self.param['Loggs'] < 0:
                 loggs1 = loggs + 0.0
                 loggs2 = loggs + 0.5
-            elif loggs - param['Loggs'] > 0:
+            elif loggs - self.param['Loggs'] > 0:
                 loggs1 = loggs - 0.5
                 loggs2 = loggs + 0.0
             else:
@@ -268,7 +375,7 @@ class FORWARD_MODEL:
                 interp_loggs = False
 
             if interp_loggs:
-                loggs2_ratio = 1.0 - ((loggs2 - param['Loggs']) / (loggs2 - loggs1))
+                loggs2_ratio = 1.0 - ((loggs2 - self.param['Loggs']) / (loggs2 - loggs1))
                 loggs1_ratio = 1.0 - loggs2_ratio
                 loggs1 = '-' + str(loggs1)
                 loggs2 = '-' + str(loggs2)
@@ -350,7 +457,7 @@ class FORWARD_MODEL:
             # plt.plot(s_files['A'][:, 0] * (10. ** -4.), s_files['A'][:, 1])
 
             for s_keys in s_files.keys():
-                if not param['light_star_mods']:
+                if not self.param['light_star_mods']:
                     s_files[s_keys] = resize(s_files[s_keys], final=False)
                 else:
                     s_files[s_keys] = s_files[s_keys][:,1]
@@ -386,15 +493,15 @@ class FORWARD_MODEL:
             return resize(sp, final=True)
 
         if self.param['stellar_activity_parameters'] == int(3):
-            st_het = take_star_spectrum(self.param, self.param['Ts_het'], meta=self.param['meta'])
-            st_phot = take_star_spectrum(self.param, self.param['Ts_phot'], meta=self.param['meta'])
+            st_het = take_star_spectrum(self.param['Ts_het'], meta=self.param['meta'])
+            st_phot = take_star_spectrum(self.param['Ts_phot'], meta=self.param['meta'])
             st_het_effect = self.param['het_frac'] * (1.0 - (st_het / st_phot))
             return 1.0 / (1.0 - st_het_effect)
 
         elif self.param['stellar_activity_parameters'] == int(5):
-            st_spot = take_star_spectrum(self.param, self.param['Ts_spot'], meta=self.param['meta'])
-            st_fac = take_star_spectrum(self.param, self.param['Ts_fac'], meta=self.param['meta'])
-            st_phot = take_star_spectrum(self.param, self.param['Ts_phot'], meta=self.param['meta'])
+            st_spot = take_star_spectrum(self.param['Ts_spot'], meta=self.param['meta'])
+            st_fac = take_star_spectrum(self.param['Ts_fac'], meta=self.param['meta'])
+            st_phot = take_star_spectrum(self.param['Ts_phot'], meta=self.param['meta'])
             st_spot_effect = self.param['spot_frac'] * (1.0 - (st_spot / st_phot))
             st_fac_effect = self.param['fac_frac'] * (1.0 - (st_fac / st_phot))
             return 1.0 / (1.0 - st_spot_effect - st_fac_effect)
@@ -449,10 +556,10 @@ def forward(param, evaluation=None, retrieval_mode=True):
             param['vmr_haze'] = evaluation['vmrhaze']
 
         if not param['bare_rock']:
-            clr = {}
+            clogr = {}
             for mol in param['fit_molecules']:
-                clr[mol] = evaluation[mol]
-            param = clr_to_vmr(param, clr)
+                clogr[mol] = evaluation[mol]
+            param = clr_to_vmr(param, clogr)
 
         if param['incl_star_activity']:
             if param['stellar_activity_parameters'] == int(3):
@@ -467,7 +574,8 @@ def forward(param, evaluation=None, retrieval_mode=True):
                 param['Ts_phot'] = evaluation['Ts_phot']
 
     if not param['bare_rock']:
-        param = cloud_pos(param)
+        if param['incl_clouds'] and param['cloud_type'] == 'water':
+            param = cloud_pos(param)
         param = calc_mean_mol_mass(param)
         mod = FORWARD_MODEL(param)
         wl, trans = mod.atmospheric_structure()
@@ -481,6 +589,9 @@ def forward(param, evaluation=None, retrieval_mode=True):
             mod = FORWARD_MODEL(param)
         star_act = mod.stellar_activity()
         model = model * star_act
+
+    if platform.system() == 'Darwin' and np.isnan(np.sum(model)):
+        print('NaN detected')
 
     if retrieval_mode:
         return model
