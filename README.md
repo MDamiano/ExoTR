@@ -9,6 +9,7 @@ Includes:
 * A retrieval routine based on nested sampling (i.e. MultiNest).
 
 <a href="https://emac.gsfc.nasa.gov?cid=2408-003"><img src="https://img.shields.io/badge/EMAC-2408--003-blue" alt="EMAC:2408.003" /></a>
+<a href="http://ascl.net/2501.006"><img src="https://img.shields.io/badge/ascl-2501.006-blue.svg?colorB=262255" alt="ascl:2501.006" /></a>
 
 ## Authors
 * [Mario Damiano](https://mdamiano.github.io/) (Jet Propulsion Laboratory, California Institute of Technology)
