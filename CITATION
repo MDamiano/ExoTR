@@ -1,0 +1,33 @@
+@ARTICLE{2024ApJ...968L..22D,
+       author = {{Damiano}, Mario and {Bello-Arufe}, Aaron and {Yang}, Jeehyun and {Hu}, Renyu},
+        title = "{LHS 1140 b Is a Potentially Habitable Water World}",
+      journal = {\apjl},
+     keywords = {Exoplanets, Habitable planets, Transmission spectroscopy, Astronomy data analysis, Bayesian statistics, Atmospheric composition, Exoplanet atmospheric composition, 498, 695, 2133, 1858, 1900, 2120, 2021, Astrophysics - Earth and Planetary Astrophysics},
+         year = 2024,
+        month = jun,
+       volume = {968},
+       number = {2},
+          eid = {L22},
+        pages = {L22},
+          doi = {10.3847/2041-8213/ad5204},
+archivePrefix = {arXiv},
+       eprint = {2403.13265},
+ primaryClass = {astro-ph.EP},
+       adsurl = {https://ui.adsabs.harvard.edu/abs/2024ApJ...968L..22D},
+      adsnote = {Provided by the SAO/NASA Astrophysics Data System}
+}
+
+@MISC{2025ascl.soft01006D,
+       author = {{Damiano}, Mario and {Hu}, Renyu},
+        title = "{ExoTR: Exoplanetary Transmission Retrieval}",
+     keywords = {Software},
+ howpublished = {Astrophysics Source Code Library, record ascl:2501.006},
+         year = 2025,
+        month = january,
+          eid = {ascl:2501.006},
+        pages = {ascl:2501.006},
+archivePrefix = {ascl},
+       eprint = {2501.006},
+       adsurl = {https://ui.adsabs.harvard.edu/abs/2025ascl.soft01006D},
+      adsnote = {Provided by the SAO/NASA Astrophysics Data System}
+}
