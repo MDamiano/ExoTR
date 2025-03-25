@@ -19,6 +19,9 @@ Includes:
 * Armen Tokadjian (Jet Propulsion Laboratory, California Institute of Technology)
 * Audrey DeVault (Massachusetts Institute of Technology)
 
+## References
+* Damiano et al. 2024, [LHS 1140 b is a potentially habitable water world](https://iopscience.iop.org/article/10.3847/2041-8213/ad5204), ApJL, 968, L22.
+
 ## Installation:
 Install python packages dependency:
 
