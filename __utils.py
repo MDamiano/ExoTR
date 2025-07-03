@@ -257,7 +257,7 @@ def read_parfile(param, parfile=None):
     else:
         try:
             param['Mp'] += 0.0
-        except KeyError and TypeError:
+        except (KeyError, TypeError):
             if param['Mp'] is None:
                 pass
             else:

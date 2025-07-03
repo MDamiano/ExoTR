@@ -27,7 +27,7 @@ except:
     multinest_import = False
 
 if multinest_import:
-    if MPIrank == 1:
+    if MPIimport and MPIrank == 1:
         from pymultinest.run import lib_mpi
 
         print('MultiNest library: "' + str(lib_mpi) + '" correctly loaded.')
@@ -76,15 +76,15 @@ class MULTINEST:
             This method uses MPI for parallelization. If MPI is not imported, the retrieval is run on a single processor.
             The retrieval is run using PyMultiNest, which performs Bayesian inference using the nested sampling algorithm.
         """
-        if MPIimport and MPIrank == 0:
+        rank = MPIrank if MPIimport else 0
+        if MPIimport and rank == 0:
             print('Using ExoTR for transmission spectroscopy retrieval')
 
         if MPIimport:
             MPI.COMM_WORLD.Barrier()  # wait for everybody to synchronize here
 
-        self.param = MPI.COMM_WORLD.bcast(self.param, root=0)
+            self.param = MPI.COMM_WORLD.bcast(self.param, root=0)
 
-        if MPIimport:
             MPI.COMM_WORLD.Barrier()  # wait for everybody to synchronize here
 
         parameters, n_params = retrieval_par_and_npar(self.param)
@@ -95,7 +95,7 @@ class MULTINEST:
             raise KeyError('Wrong value have been inserted for "clr_prior" in the parameter file.')
 
         if len(self.param['fit_molecules']) > 0 and self.param['clr_prior'] != 'uniform':
-            if MPIrank == 0:
+            if MPIimport and rank == 0:
                 print('INFO - "' + self.param['clr_prior'] + '" has been selected as CLR prior functions')
             ppf = define_modified_clr_prior(len(self.param['fit_molecules']), self.param['clr_prior'])
 
@@ -311,7 +311,7 @@ class MULTINEST:
 
             return loglikelihood
 
-        if MPIimport and MPIrank == 0:
+        if MPIimport and rank == 0:
             time1 = time.time()
 
         pymultinest.run(LogLikelihood=loglike,
@@ -327,12 +327,12 @@ class MULTINEST:
                         verbose=self.param['multinest_verbose'],
                         init_MPI=False)
 
-        if MPIimport and MPIrank == 0:  # Plot Nest_spectrum
+        if MPIimport and rank == 0:  # Plot Nest_spectrum
             time2 = time.time()
             elapsed((time2 - time1) * (10 ** 9))
 
         prefix = self.param['out_dir'] + self.param['name_p'] + '_'
-        if MPIimport and MPIrank == 0:
+        if MPIimport and rank == 0:
             json.dump(parameters, open(prefix + 'params.json', 'w'))  # save parameter names
 
         ### PRODUCE PLOTS FROM HERE --- POST-PROCESSING ###
@@ -352,7 +352,7 @@ class MULTINEST:
             if MPIimport:
                 MPI.COMM_WORLD.Barrier()  # wait for everybody to synchronize here
 
-            if MPIimport and MPIrank == 0:
+            if MPIimport and rank == 0:
                 time.sleep(300)
                 rank_0 = np.loadtxt(self.param['out_dir'] + 'loglikelihood_per_datapoint/loglike_0.dat')
                 rank_0_spec = np.loadtxt(self.param['out_dir'] + 'loglikelihood_per_datapoint/samples_0.dat')
@@ -370,7 +370,7 @@ class MULTINEST:
                 os.system('rm -rf ' + self.param['out_dir'] + 'loglikelihood_per_datapoint/')
                 del rank_0_spec, rank_0, rank_0_par
 
-        if MPIimport and MPIrank == 0:
+        if MPIimport and rank == 0:
             if self.param['plot_models']:
                 self.param['chi_square_stat'] = {}
                 if mds < 2:
@@ -1023,7 +1023,7 @@ class MULTINEST:
         samples[:, 0] = self.param['spectrum']['wl']
         loglike_data = np.zeros((int(self.param['n_likelihood_data'] / MPIsize), wl_len))
 
-        if MPIrank == 0:
+        if rank == 0:
             print('\n#### CALCULATING THE LIKELIHOOD PER DATAPOINT ####')
             try:
                 os.mkdir(self.param['out_dir'] + 'loglikelihood_per_datapoint/')
@@ -1048,9 +1048,9 @@ class MULTINEST:
             chi = (self.param['spectrum']['T_depth'][temp_sorted_data_idx] - model) / self.param['spectrum']['error_T'][temp_sorted_data_idx]
             loglike_data[i, :] = ((-1.) * np.log(self.param['spectrum']['error_T'][temp_sorted_data_idx] * np.sqrt(2.0 * math.pi))) - (0.5 * chi * chi)
 
-        np.savetxt(self.param['out_dir'] + 'loglikelihood_per_datapoint/loglike_' + str(MPIrank) + '.dat', loglike_data)
-        np.savetxt(self.param['out_dir'] + 'loglikelihood_per_datapoint/samples_' + str(MPIrank) + '.dat', samples)
-        np.savetxt(self.param['out_dir'] + 'loglikelihood_per_datapoint/samples_par_' + str(MPIrank) + '.dat', sample_par[1:, :])
+        np.savetxt(self.param['out_dir'] + f'loglikelihood_per_datapoint/loglike_{rank}.dat', loglike_data)
+        np.savetxt(self.param['out_dir'] + f'loglikelihood_per_datapoint/samples_{rank}.dat', samples)
+        np.savetxt(self.param['out_dir'] + f'loglikelihood_per_datapoint/samples_par_{rank}.dat', sample_par[1:, :])
 
         if self.param['spectrum']['bins']:
             self.param['spectrum']['wl'] = temp[:, 2] + 0.0
