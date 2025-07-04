@@ -98,11 +98,11 @@ class CREATE_SPECTRUM:
         self.param = par_and_calc(self.param)
         self.param = load_input_spectrum(self.param)
 
-        if param['incl_star_activity'] and param['st_frac'] is None:
+        if self.param['incl_star_activity'] and self.param['st_frac'] is None:
             raise KeyError('If you want to include the star activity in the calculation, please specify the fraction of the star covered by the activity through the parameter "st_frac"')
-        if param['incl_star_activity'] and param['Ts_het'] is None:
+        if self.param['incl_star_activity'] and self.param['Ts_het'] is None:
             raise KeyError('If you want to include the star activity in the calculation, please specify the temperature of star hets through the parameter "Ts_het"')
-        if param['incl_star_activity'] and param['Ts_phot'] is None:
+        if self.param['incl_star_activity'] and self.param['Ts_phot'] is None:
             raise KeyError('If you want to include the star activity in the calculation, please specify the temperature of star through the parameter "Ts"')
 
         if self.verbose:
@@ -145,7 +145,7 @@ class CREATE_SPECTRUM:
         try:
             print('g \t\t = \t' + str(self.param['gp']))
         except KeyError:
-            self.param['gp'] = (const.G.value * const.M_earth.value * param['Mp']) / ((const.R_earth.value * param['Rp']) ** 2.)  # g is in m/s2
+            self.param['gp'] = (const.G.value * const.M_earth.value * self.param['Mp']) / ((const.R_earth.value * self.param['Rp']) ** 2.)  # g is in m/s2
             print('g \t\t = \t' + str(self.param['gp']))
         if self.param['Tp'] is not None:
             print('T \t\t = \t' + str(self.param['Tp']))
@@ -199,7 +199,7 @@ class CREATE_SPECTRUM:
                 os.mkdir(self.param['out_dir'])
             np.savetxt(self.param['out_dir'] + str(self.param['file_output_name']) + '.dat', data)
             print('The spectrum file has been saved in ' + self.param['out_dir'] + str(self.param['file_output_name']) + '.dat')
-        except IOError or KeyError:
+        except (IOError, KeyError):
             if not os.path.exists(self.param['pkg_dir'] + 'Output/'):
                 os.mkdir(self.param['pkg_dir'] + 'Output/')
             np.savetxt(self.param['pkg_dir'] + 'Output/spectrum.dat', data)
