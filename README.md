@@ -19,7 +19,7 @@ Includes:
 * Armen Tokadjian (Jet Propulsion Laboratory, California Institute of Technology)
 * Audrey DeVault (Massachusetts Institute of Technology)
 
-## References
+## Code usage in literature
 * Damiano et al. 2024, [LHS 1140 b is a potentially habitable water world](https://iopscience.iop.org/article/10.3847/2041-8213/ad5204), ApJL, 968, L22.
 * Bello-Arufe et al. 2025, [Evidence for a Volcanic Atmosphere on the Sub-Earth L 98-59 b](https://iopscience.iop.org/article/10.3847/2041-8213/adaf22), ApJL, 980, L26.
 
