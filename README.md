@@ -19,10 +19,6 @@ Includes:
 * Armen Tokadjian (Jet Propulsion Laboratory, California Institute of Technology)
 * Audrey DeVault (Massachusetts Institute of Technology)
 
-## Code usage in literature
-* Damiano et al. 2024, [LHS 1140 b is a potentially habitable water world](https://iopscience.iop.org/article/10.3847/2041-8213/ad5204), ApJL, 968, L22.
-* Bello-Arufe et al. 2025, [Evidence for a Volcanic Atmosphere on the Sub-Earth L 98-59 b](https://iopscience.iop.org/article/10.3847/2041-8213/adaf22), ApJL, 980, L26.
-
 ## Installation:
 Install python packages dependency:
 
@@ -72,6 +68,10 @@ The plotting of the retrieval results is automatic and will produce the followin
 * The posterior distribution corner plot.
 
 In case `pymultinest` finds multiple solutions, ExoTR will automatically plot the aforementioned graphs for each of the solutions.
+
+## Code usage in literature
+* Damiano et al. 2024, [LHS 1140 b is a potentially habitable water world](https://iopscience.iop.org/article/10.3847/2041-8213/ad5204), ApJL, 968, L22.
+* Bello-Arufe et al. 2025, [Evidence for a Volcanic Atmosphere on the Sub-Earth L 98-59 b](https://iopscience.iop.org/article/10.3847/2041-8213/adaf22), ApJL, 980, L26.
 
 ## Acknowledgement
 The research was carried out at the Jet Propulsion Laboratory, California Institute of Technology, under a contract with the National Aeronautics and Space Administration (80NM0018D0004).
