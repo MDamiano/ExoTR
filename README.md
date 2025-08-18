@@ -17,7 +17,6 @@ Includes:
 
 ## Collaborators
 * Armen Tokadjian (Jet Propulsion Laboratory, California Institute of Technology)
-* Audrey DeVault (Massachusetts Institute of Technology)
 
 ## Installation:
 Install python packages dependency:
