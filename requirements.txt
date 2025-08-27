@@ -4,3 +4,4 @@ astropy
 matplotlib
 spectres
 scikit-bio
+arviz
