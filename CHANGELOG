@@ -1,9 +1,28 @@
+## [1.6.3] - 2025-08-18
+- Added support for retrieving on vmr space; can specify upper bound of mixing ratio with vmr_upper, default is -0.3 (50% upper limit on any non-fill, fitting gas)
+- Now possible to define planet temperature prior bounds and planet surface pressure upper bound with T_upper, T_lower, P_upper (defaults to 2000, 100, 8)
+- Related: code now automatically cuts opacity files based on T, P bounds defined above
+- Support for additional molecules: C4H2, CH3Cl, CH3SH, CS2, DMS, PH3
+- Ability to use float_32 format for opacity files to cut down on memory usage (use_float32, default is False)
+
+## [1.6.2] - 2024-10-31
+- Possibility to load stellar spectra and gases opacity externally.
+- Bugfixes.
+
+## [1.6.1] - 2024-10-17
+- Added Soot as type of hazes.
+- Bugfixes.
+
+## [1.6.0] - 2024-09-18
+- Added the possibility to compute the elpd_loo statistics for additional context and understanding of the retrieval. Use the key 'plot_elpd_stats' to activate it. Default is False. The python package Arviz is needed to use this functionality.
+- In addition one can use another run performed by ExoTR as reference and calculate the difference in predictive performance between two retrievals with one model parameter has been omitted. Use the key 'elpd_reference' and set it to the path of 'elpd_loo_statistics.json' located in the referece retrieval folder.
+- The opacities/cross-sections are now tailored in wavelength to the specific problem that is being analyzed, i.e., the wavelength grid is selected based on the minimum and maximum value of the input spectrum.
+
 ## [1.5.0] - 2024-09-13
 - Added the function '__utils.readcross(fname)' to read the cross sections with the '.dat' format.
 - Introduced newly calculated cross sections at 200k and 10k spectral resolution.
 - New key in the parameter file allow you to choose which cross sections to use. The key is 'opac_data'. The default value is 'mat'. It can be set to '200k' and '10k' to use the relative cross sections.
 - If the planetary temperature is not a free parameter, the molecular cross-sections are pre calculated in '__utils.pre_load_variables(param)' function. Otherwise, they need to be calculated in '__forward.atmospheric_structure()'.
-- The opacities/cross-sections are now tailored in wavelength to the specific problem that is being analyzed, i.e., the wavelength grid is selected based on the minimum and maximum value of the input spectrum.
 
 ## [1.4.5] - 2024-09-10
 - The calc_mean_mol_mass would in some conditions assign a negative value to the filling gas.

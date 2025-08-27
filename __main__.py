@@ -98,12 +98,35 @@ class CREATE_SPECTRUM:
         self.param = par_and_calc(self.param)
         self.param = load_input_spectrum(self.param)
 
+<<<<<<< Updated upstream
         if self.param['incl_star_activity'] and self.param['st_frac'] is None:
             raise KeyError('If you want to include the star activity in the calculation, please specify the fraction of the star covered by the activity through the parameter "st_frac"')
         if self.param['incl_star_activity'] and self.param['Ts_het'] is None:
             raise KeyError('If you want to include the star activity in the calculation, please specify the temperature of star hets through the parameter "Ts_het"')
         if self.param['incl_star_activity'] and self.param['Ts_phot'] is None:
             raise KeyError('If you want to include the star activity in the calculation, please specify the temperature of star through the parameter "Ts"')
+=======
+        if param['incl_star_activity']:
+            if param['stellar_activity_parameters'] == 3:
+                # CHANGED st_frac below to het_frac for consistency with forward model and multinest
+                if param['het_frac'] is None:
+                    raise KeyError('If you want to include the star activity in the calculation, please specify the fraction of the star covered by the activity through the parameter "st_frac"')
+                if param['Ts_het'] is None:
+                    raise KeyError('If you want to include the star activity in the calculation, please specify the temperature of star hets through the parameter "Ts_het"')
+                if param['Ts_phot'] is None:
+                    raise KeyError('If you want to include the star activity in the calculation, please specify the temperature of star through the parameter "Ts"')
+            elif param['stellar_activity_parameters'] == 5:
+                if param['spot_frac'] is None:
+                    raise KeyError('If you want to include the star activity in the calculation, please specify the fraction of the star covered by spots through the parameter "spot_frac"')
+                if param['fac_frac'] is None:
+                    raise KeyError('If you want to include the star activity in the calculation, please specify the fraction of the star covered by faculae through the parameter "fac_frac"')
+                if param['Ts_spot'] is None:
+                    raise KeyError('If you want to include the star activity in the calculation, please specify the temperature of starspots through the parameter "Ts_spot"')
+                if param['Ts_fac'] is None:
+                    raise KeyError('If you want to include the star activity in the calculation, please specify the temperature of faculae through the parameter "Ts_fac"')
+                if param['Ts_phot'] is None:
+                    raise KeyError('If you want to include the star activity in the calculation, please specify the temperature of star through the parameter "Ts"')
+>>>>>>> Stashed changes
 
         if self.verbose:
             print('Planet : ' + self.param['name_p'])
@@ -136,9 +159,12 @@ class CREATE_SPECTRUM:
         elif self.param['fit_gen_cld']:
             print('Log(Ptop) \t = \t' + str(self.param['P_top']))
 
-        if self.param['incl_haze']:
-            print('diam_haze \t = \t' + str(self.param['diam_haze']))
-            print('vmr_haze \t = \t' + str(self.param['vmr_haze']))
+        if self.param['fit_tholin']:
+            print('diam_tholin \t = \t' + str(self.param['diam_tholin']))
+            print('vmr_tholin \t = \t' + str(self.param['vmr_tholin']))
+        elif self.param['fit_soot']:
+            print('diam_soot \t = \t' + str(self.param['diam_soot']))
+            print('vmr_soot \t = \t' + str(self.param['vmr_soot']))
 
         print('Rp \t\t = \t' + str(self.param['Rp']))
         print('Mp \t\t = \t' + str(self.param['Mp']))
@@ -147,37 +173,39 @@ class CREATE_SPECTRUM:
         except KeyError:
             self.param['gp'] = (const.G.value * const.M_earth.value * self.param['Mp']) / ((const.R_earth.value * self.param['Rp']) ** 2.)  # g is in m/s2
             print('g \t\t = \t' + str(self.param['gp']))
-        if self.param['Tp'] is not None:
-            print('T \t\t = \t' + str(self.param['Tp']))
-        else:
-            print('T \t\t = \t' + 'from file')
 
-        self.param['fit_molecules'] = []
-        for mol in self.param['supported_molecules']:
-            try:
-                if self.param['vmr_' + mol] != 0.0:
-                    self.param['fit_molecules'].append(mol)
-            except KeyError:
-                pass
-
-        for mol in self.param['fit_molecules']:
-            if mol == 'N2' and self.param['gas_fill'] != 'N2' and self.param['vmr_N2'] != 0:
-                print('VMR N2 \t\t = \t' + str(self.param['vmr_N2']))
-            elif mol == 'N2' and self.param['gas_fill'] == 'N2':
-                pass
-            elif mol == 'O2' or mol == 'O3' or mol == 'CO':
-                if self.param['vmr_' + mol] != 0.0:
-                    print('VMR ' + mol + ' \t\t = \t' + str(self.param['vmr_' + mol]))
-                else:
-                    pass
+        if not param['bare_rock']:
+            if self.param['Tp'] is not None:
+                print('T \t\t = \t' + str(self.param['Tp']))
             else:
-                if self.param['vmr_' + mol] != 0.0:
-                    print('VMR ' + mol + ' \t = \t' + str(self.param['vmr_' + mol]))
-                else:
+                print('T \t\t = \t' + 'from file')
+
+            self.param['fit_molecules'] = []
+            for mol in self.param['supported_molecules']:
+                try:
+                    if self.param['vmr_' + mol] != 0.0:
+                        self.param['fit_molecules'].append(mol)
+                except KeyError:
                     pass
+
+            for mol in self.param['fit_molecules']:
+                if mol == 'N2' and self.param['gas_fill'] != 'N2' and self.param['vmr_N2'] != 0:
+                    print('VMR N2 \t\t = \t' + str(self.param['vmr_N2']))
+                elif mol == 'N2' and self.param['gas_fill'] == 'N2':
+                    pass
+                elif mol == 'O2' or mol == 'O3' or mol == 'CO':
+                    if self.param['vmr_' + mol] != 0.0:
+                        print('VMR ' + mol + ' \t\t = \t' + str(self.param['vmr_' + mol]))
+                    else:
+                        pass
+                else:
+                    if self.param['vmr_' + mol] != 0.0:
+                        print('VMR ' + mol + ' \t = \t' + str(self.param['vmr_' + mol]))
+                    else:
+                        pass
 
         self.param = pre_load_variables(self.param)
-        
+
         time1 = time.time()
         wl, model = forward(self.param, retrieval_mode=self.param['ret_mode'])
         time2 = time.time()

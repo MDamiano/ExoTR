@@ -8,6 +8,7 @@ import matplotlib.pyplot as plt
 from spectres import spectres
 import scipy as sp
 import numpy as np
+import arviz as az
 import platform
 import scipy.io
 import warnings
@@ -22,4 +23,3 @@ import os
 
 np.set_printoptions(threshold=2**31-1)
 warnings.filterwarnings('ignore')
-np.random.seed(42)  # DON'T PANIC !!

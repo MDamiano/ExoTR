@@ -134,6 +134,7 @@ class FORWARD_MODEL:
         # CIA opacity
         (self.param['opaclc']).T[0][0] = 1e-7
         SCIA = (interpn(((self.param['opaclc']).T[0], self.param['opactc'][0]), self.param['opaccia'], np.array([I1 * self.param['opacw'][0], TL * I2]).T) * 1e-10).T
+        # TODO: this line needs to be changed now that we can include h2 as a regular non-fill gas
         if self.param['gas_fill'] == 'H2' and self.param['CIA_contribution']:
             op += (SCIA * (N['H2'] * I2) * (N['H2'] * I2) * 0.8)
 
@@ -190,12 +191,19 @@ class FORWARD_MODEL:
 
         # Tholin Haze
         if self.param['incl_haze'] and self.param['haze_contribution']:
-            tck_haze = interp2d(self.param['opacwa'][0], self.param['opacda'][0], self.param['opacaertholin'])
-            d_haze = np.full(np.shape(NL), self.param['diam_haze'])
-            f_haze = self.param['vmr_haze']
+            if self.param['fit_tholin']:
+                tck_haze = interp2d(self.param['opacwa'][0], self.param['opacda'][0], self.param['opacaertholin'])
+                d_haze = np.full(np.shape(NL), self.param['diam_tholin'])
+                f_haze = self.param['vmr_tholin']
+            elif self.param['fit_soot']:
+                tck_haze = interp2d(self.param['opacwa'][0], self.param['opacda'][0], self.param['opacaersoot'])
+                d_haze = np.full(np.shape(NL), self.param['diam_soot'])
+                f_haze = self.param['vmr_soot']
+
             S_haze = tck_haze(self.param['opacw'][0], np.ndarray.flatten(d_haze)) * 1e-4
             # parameterize by fraction f_haze and mass (mp*mmm/volume/density) // density assumed: 800 kg/m^3
             N_haze = f_haze * NL * const.u.value * mul / (4 / 3 * math.pi * (d_haze / 2 / 1e6) ** 3 * 800)
+
             op += (S_haze * (N_haze * I2))
 
         # Total Opacity of Transit Path
@@ -323,10 +331,16 @@ class FORWARD_MODEL:
                     return spectres(self.param['spectrum']['wl'][self.param['sorted_data_idx']], wl_temp, fl, fill=False)
 
             if not self.param['light_star_mods']:
-                directory = self.param['pkg_dir'] + 'PHOENIX_models/'
+                if self.param['stellar_spec_dir'] is not None:
+                    directory = self.param['stellar_spec_dir'] + 'PHOENIX_models/'
+                else:
+                    directory = self.param['pkg_dir'] + 'PHOENIX_models/'
                 skp_hdr = 6
             else:
-                directory = self.param['pkg_dir'] + 'PHOENIX_models_light/'
+                if self.param['stellar_spec_dir'] is not None:
+                    directory = self.param['stellar_spec_dir'] + 'PHOENIX_models_light/'
+                else:
+                    directory = self.param['pkg_dir'] + 'PHOENIX_models_light/'
                 skp_hdr = 0
 
             t_star = round(float(Ts), -2)
@@ -491,7 +505,6 @@ class FORWARD_MODEL:
             # plt.show()
 
             return resize(sp, final=True)
-
         if self.param['stellar_activity_parameters'] == int(3):
             st_het = take_star_spectrum(self.param['Ts_het'], meta=self.param['meta'])
             st_phot = take_star_spectrum(self.param['Ts_phot'], meta=self.param['meta'])
@@ -551,15 +564,25 @@ def forward(param, evaluation=None, retrieval_mode=True):
         if param['fit_gen_cld']:
             param['P_top'] = evaluation['ptop']
 
-        if param['incl_haze']:
-            param['diam_haze'] = evaluation['dhaze']
-            param['vmr_haze'] = evaluation['vmrhaze']
+        if param['fit_tholin']:
+            param['diam_tholin'] = evaluation['dtholin']
+            param['vmr_tholin'] = evaluation['vmrtholin']
+
+        if param['fit_soot']:
+            param['diam_soot'] = evaluation['dsoot']
+            param['vmr_soot'] = evaluation['vmrsoot']
 
         if not param['bare_rock']:
             clogr = {}
             for mol in param['fit_molecules']:
                 clogr[mol] = evaluation[mol]
-            param = clr_to_vmr(param, clogr)
+            if param['gas_par_space'] == 'clr':
+                param = clr_to_vmr(param, clogr)
+            elif param['gas_par_space'] == 'vmr':
+                for mol in param['fit_molecules']:
+                    param['vmr_' + mol] = evaluation[mol]
+                if param['gas_fill'] is not None:
+                    param['vmr_' + param['gas_fill']] = evaluation[param['gas_fill']]
 
         if param['incl_star_activity']:
             if param['stellar_activity_parameters'] == int(3):
@@ -579,8 +602,7 @@ def forward(param, evaluation=None, retrieval_mode=True):
         param = calc_mean_mol_mass(param)
         mod = FORWARD_MODEL(param)
         wl, trans = mod.atmospheric_structure()
-
-        model = spectres(param['spectrum']['wl'][param['sorted_data_idx']], wl, trans, fill=False)
+        model = spectres(param['spectrum']['wl'][param['sorted_data_idx']], wl, trans, fill=False, verbose=False)
     else:
         model = np.ones(len(param['spectrum']['wl'])) * (((param['Rp'] * const.R_earth.value) / (param['Rs'] * const.R_sun.value)) ** 2.)
 

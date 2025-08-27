@@ -30,36 +30,49 @@ def default_parameters():
     param['incl_star_activity'] = False
     param['stellar_activity_parameters'] = 5
     param['light_star_mods'] = False
+    param['stellar_spec_dir'] = None
 
     #### [PLANETARY FITTING PARAMETERS] ####
     param['fit_Rp'] = True
     param['fit_Mp'] = False
     param['fit_T'] = False
     param['TP_profile'] = None
+    param['P_upper'] = 8
+    param['T_lower'] = 100
+    param['T_upper'] = 2000
 
     #### [ATMOSPHERIC FITTING PARAMETERS] ####
     param['bare_rock'] = False
     param['clr_prior'] = 'uniform'
+    param['gas_par_space'] = 'clr'
+    param['vmr_upper'] = -0.3
     param['fit_H2O'] = False
     param['fit_CH4'] = False
     param['fit_C2H2'] = False
     param['fit_C2H4'] = False
     param['fit_C2H6'] = False
+    param['fit_C4H2'] = False
+    param['fit_CH3Cl'] = False
+    param['fit_CH3SH'] = False
     param['fit_NH3'] = False
     param['fit_HCN'] = False
     param['fit_H2S'] = False
     param['fit_SO2'] = False
     param['fit_SO3'] = False
+    param['fit_CS2'] = False
     param['fit_CO'] = False
     param['fit_CO2'] = False
     param['fit_N2O'] = False
     param['fit_OCS'] = False
+    param['fit_DMS'] = False
+    param['fit_PH3'] = False
     param['fit_N2'] = False
     param['fit_H2'] = False
     param['gas_fill'] = None
     param['incl_clouds'] = False
     param['cloud_type'] = None
     param['incl_haze'] = False
+    param['haze_type'] = None
 
     #### [DATASET FITTING PARAMETERS] ####
     param['fit_offset'] = False
@@ -68,6 +81,8 @@ def default_parameters():
     #### [ExoTR PARAMETER] ####
     param['optimizer'] = None
     param['opac_data'] = None
+    param['use_float32'] = False
+    param['opac_dir'] = None
 
     #### [MULTINEST PARAMETERS] ####
     param['multimodal'] = True
@@ -83,15 +98,20 @@ def default_parameters():
     param['extended_wl_plot'] = False
     param['plot_models'] = False
     param['plot_posterior'] = False
+    param['plot_elpd_stats'] = False
+    param['elpd_reference'] = None
     param['truths'] = None
 
     #### [SYNTHESIZING SPECTRUM PARAMETERS] ####
     param['add_noise'] = False
+    param['gaussian_noise'] = True
+    param['use_noise_file'] = False
+    param['noise_file'] = None
     param['snr'] = 20
     param['return_bins'] = False
 
     param['wkg_dir'] = os.getcwd()
-    param['supported_molecules'] = ['H2O', 'CH4', 'C2H2', 'C2H4', 'C2H6', 'NH3', 'HCN', 'H2S', 'SO2', 'SO3', 'CO', 'CO2', 'N2O', 'OCS', 'N2', 'H2']
+    param['supported_molecules'] = ['H2O', 'CH4', 'C2H2', 'C2H4', 'C2H6', 'C4H2', 'CH3Cl', 'CH3SH', 'NH3', 'HCN', 'H2S', 'SO2', 'SO3', 'CS2', 'CO', 'CO2', 'N2O', 'OCS', 'DMS', 'PH3', 'N2', 'H2']
 
     for mol in param['supported_molecules']:
         param[mol + '_contribution'] = True
@@ -101,22 +121,28 @@ def default_parameters():
     param['star_act_contribution'] = True
     param['haze_contribution'] = True
 
-    mm = {'H': 1.00784, 'He': 4.002602, 'C': 12.0107, 'N': 14.0067, 'O': 15.9994, 'S': 32.065}
+    mm = {'H': 1.00784, 'He': 4.002602, 'C': 12.0107, 'N': 14.0067, 'O': 15.9994, 'P': 30.973762, 'S': 32.065, 'Cl': 35.453}
     mm['H2'] = 2. * mm['H']
     mm['H2O'] = (2. * mm['H']) + mm['O']
     mm['CH4'] = mm['C'] + (4. * mm['H'])
     mm['C2H2'] = (2. * mm['C']) + (2. * mm['H'])
     mm['C2H4'] = (2. * mm['C']) + (4. * mm['H'])
     mm['C2H6'] = (2. * mm['C']) + (6. * mm['H'])
+    mm['C4H2'] = (4. * mm['C']) + (2. * mm['H'])
+    mm['CH3Cl'] = (mm['C'] + (3. * mm['H']) + mm['Cl'])
+    mm['CH3SH'] = (mm['C'] + (4. * mm['H']) + mm['S'])
     mm['NH3'] = mm['N'] + (3. * mm['H'])
     mm['HCN'] = mm['H'] + mm['C'] + mm['N']
     mm['H2S'] = (2. * mm['H']) + mm['S']
     mm['SO2'] = mm['S'] + (2. * mm['O'])
     mm['SO3'] = mm['S'] + (3. * mm['O'])
+    mm['CS2'] = mm['C'] + (2. * mm['S'])
     mm['CO'] = mm['C'] + mm['O']
     mm['CO2'] = mm['C'] + (2. * mm['O'])
     mm['N2O'] = (2. * mm['N']) + mm['O']
     mm['OCS'] = mm['O'] + mm['C'] + mm['S']
+    mm['DMS'] = (2. * mm['C']) + (6. * mm['H']) + mm['S']
+    mm['PH3'] = mm['P'] + (3. * mm['H'])
     mm['O2'] = 2. * mm['O']
     mm['O3'] = 3. * mm['O']
     mm['N2'] = 2. * mm['N']
@@ -135,6 +161,12 @@ def default_parameters():
             param['formatted_labels'][mol] = "Log(C$_2$H$_4$)"
         if mol == 'C2H6':
             param['formatted_labels'][mol] = "Log(C$_2$H$_6$)"
+        if mol == 'C4H2':
+            param['formatted_labels'][mol] = "Log(C$_4$H$_2$)"
+        if mol == 'CH3Cl':
+            param['formatted_labels'][mol] = "Log(CH$_3$Cl)"
+        if mol == 'CH3SH':
+            param['formatted_labels'][mol] = "Log(CH$_3$SH)"
         if mol == 'NH3':
             param['formatted_labels'][mol] = "Log(NH$_3$)"
         if mol == 'HCN':
@@ -145,6 +177,8 @@ def default_parameters():
             param['formatted_labels'][mol] = "Log(SO$_2$)"
         if mol == 'SO3':
             param['formatted_labels'][mol] = "Log(SO$_3$)"
+        if mol == 'CS2':
+            param['formatted_labels'][mol] = "Log(CS$_2$)"
         if mol == 'CO':
             param['formatted_labels'][mol] = "Log(CO)"
         if mol == 'CO2':
@@ -153,6 +187,10 @@ def default_parameters():
             param['formatted_labels'][mol] = "Log(N$_2$O)"
         if mol == 'OCS':
             param['formatted_labels'][mol] = "Log(OCS)"
+        if mol == 'DMS':
+            param['formatted_labels'][mol] = "Log(DMS)"
+        if mol == 'PH3':
+            param['formatted_labels'][mol] = "Log(PH$_3$)"
         if mol == 'N2':
             param['formatted_labels'][mol] = "Log(N$_2$)"
         if mol == 'H2':
@@ -188,7 +226,6 @@ def read_parfile(param, parfile=None):
         print('No parameter file provided. Please provide one.')
         sys.exit()
     else:
-        #print('Reading parfile: "' + parfile + '"')
         with open(cwd + '/' + parfile, 'r') as file:
             paramfile = file.readlines()
         for i in paramfile:
@@ -329,6 +366,17 @@ def read_parfile(param, parfile=None):
                     param['fit_gen_cld'] = True
                 param['vmr_H2O'] = 10. ** (-20.)
 
+    if param['incl_haze']:
+        if param['haze_type'] == 'tholin':
+            param['fit_tholin'] = True
+            param['fit_soot'] = False
+        elif param['haze_type'] == 'soot':
+            param['fit_tholin'] = False
+            param['fit_soot'] = True
+    else:
+        param['fit_tholin'] = False
+        param['fit_soot'] = False
+
     if param['optimizer'] == 'multinest':
         param['nlive_p'] = int(param['nlive_p'])
         param['max_modes'] = int(param['max_modes'])
@@ -341,6 +389,8 @@ def read_parfile(param, parfile=None):
     if param['optimizer'] is not None:
         param['fit_molecules'] = []
         for mol in param['supported_molecules']:
+            if param['gas_par_space'] == 'vmr':
+                param['vmr_' + mol] = 0.0
             if param['fit_' + mol]:
                 param['fit_molecules'].append(mol)
 
@@ -356,8 +406,9 @@ def read_parfile(param, parfile=None):
         if param['meta'] is None:
             param['meta'] = 0.0
 
-        if os.path.isdir(param['pkg_dir'] + 'PHOENIX_models_light/'):
-            param['light_star_mods'] = True
+        if not os.path.isdir(param['pkg_dir'] + 'PHOENIX_models/'):
+            if os.path.isdir(param['pkg_dir'] + 'PHOENIX_models_light/'):
+                param['light_star_mods'] = True
 
     return param
 
@@ -409,21 +460,21 @@ def par_and_calc(param):
         spline.extend(rightcoeffs[..., None], np.r_[rightxnext])
 
     # planet
-    if not param['fit_T'] and param['TP_profile'] is None:
-        try:
-            param['Tp'] += 0.0
-        except TypeError:
-            t1 = ((param['Rs'] * const.R_sun) / (2. * param['major-a'] * const.au)) ** 0.5
-            param['Tp'] = t1 * ((1 - 0.3) ** 0.25) * param['Ts']
+    if not param['bare_rock']:
+        if not param['fit_T'] and param['TP_profile'] is None:
+            try:
+                param['Tp'] += 0.0
+            except TypeError:
+                t1 = ((param['Rs'] * const.R_sun) / (2. * param['major-a'] * const.au)) ** 0.5
+                param['Tp'] = t1 * ((1 - 0.3) ** 0.25) * param['Ts']
 
-    if param['TP_profile'] is not None:
-        tp_prof = param['TP_profile'] + 0.0
-        param['TP_profile'] = CubicSpline(tp_prof[:, 1], tp_prof[:, 0], bc_type='natural')
-        add_boundary_knots(param['TP_profile'])
+        if param['TP_profile'] is not None:
+            tp_prof = param['TP_profile'] + 0.0
+            param['TP_profile'] = CubicSpline(tp_prof[:, 1], tp_prof[:, 0], bc_type='natural')
+            add_boundary_knots(param['TP_profile'])
 
     param['P_standard'] = 10. ** np.arange(-1.0, 12.1, step=0.1)
-    param['P'] = 10. ** np.arange(-1.0, 8.1, step=0.1)
-
+    param['P'] = 10. ** np.arange(-1.0, param['P_upper']+0.1, step=0.1)
     return param
 
 
@@ -492,6 +543,8 @@ def load_input_spectrum(param):
             if len(spectrum[0, :]) == 3:
                 wl_idx = 0
                 param['spectrum']['bins'] = False
+                param['min_wl'] = min(spectrum[:, 0])
+                param['max_wl'] = max(spectrum[:, 0])
             else:
                 wl_idx = 2
                 param['spectrum']['wl_bins'] = spectrum[:, 0:3]  # wavelength bin_low in micron
@@ -683,17 +736,24 @@ def ranges(param):
         param['crnh3_range'] = [-12.0, 0.0]  # Condensation Ratio NH3
     if param['fit_gen_cld']:
         param['ptop_range'] = [0.0, 9.0]  # Top pressure
-    if param['incl_haze']:
-        param['dhaze_range'] = [-3, 2]  # diameter of haze particle
-        param['vmrhaze_range'] = [-10, -1]
+    if param['fit_tholin']:
+        param['dtholin_range'] = [-3, 2]  # diameter of tholin haze particle
+        param['vmrtholin_range'] = [-10, -1]
+    if param['fit_soot']:
+        param['dsoot_range'] = [-3, 2]  # diameter of soot haze particle
+        param['vmrsoot_range'] = [-10, -1]
     if param['fit_T'] and param['Tp'] is None and param['TP_profile'] is None:
-        param['tp_range'] = [100.0, 2000.0]  # Atmospheric equilibrium temperature
+        param['tp_range'] = [param['T_lower'], param['T_upper']]  # Atmospheric equilibrium temperature
     elif param['fit_T'] and param['Tp'] is None and param['TP_profile'] is not None:
         param['tp_range'] = [-300.0, 300.0]
     elif param['fit_T'] and param['Tp'] is not None:
         param['tp_range'] = [max([100.0, param['Tp'] - 500.0]), param['Tp'] + 500.0]  # Atmospheric equilibrium temperature
-    if len(param['fit_molecules']) > 0 and param['clr_prior'] == 'uniform':
-        param['gas_clr_range'] = [-25, 25]  # Centered-log-ratio standard range
+    if len(param['fit_molecules']) > 0:
+        if param['gas_par_space'] == 'clr':
+            if param['clr_prior'] == 'uniform':
+                param['gas_clr_range'] = [-25, 25]  # Centered-log-ratio standard range
+        elif param['gas_par_space'] == 'vmr':
+            param['gas_vmr_range'] = [-12, param['vmr_upper']]
     if param['fit_Rp']:
         param['rp_range'] = [param['Rp'] * 0.5, param['Rp'] * 2.0]  # Planetary Radius
     if param['fit_Mp']:
@@ -782,35 +842,55 @@ def pre_load_variables(param, for_plotting=False):
         It specifically excludes certain keys from the MATLAB file that are not related to the opacity data.
         It also initializes the opacity without clouds to zero.
     """
-    data = scipy.io.loadmat(param['pkg_dir'] + 'Data/opac/opac_092024.mat')
-    opac_data_keys = []
-    for i in data.keys():
-        if i != '__header__' and i != '__globals__' and i != '__version__':
-            param[i] = np.array(data[i]) + 0.0
-            opac_data_keys.append(i)
-
-    del data
-
-    if param['gas_fill'] == 'N2' or param['gas_fill'] == 'H2':
-        param['opac' + param['gas_fill'].lower()] = np.zeros_like(param['opach2o'])
-    if 'N2' in param['fit_molecules']:
-        param['opacn2'] = np.zeros_like(param['opach2o'])
-    if 'H2' in param['fit_molecules']:
-        param['opach2'] = np.zeros_like(param['opach2o'])
-    param['opac_data_keys'] = opac_data_keys
-    param['opacaer_no_cloud'] = param['opacaerh2o'] * 0.0
-
-    if param['opac_data'] is not None:
-        for mol in param['fit_molecules'] + [param['gas_fill']]:
-            param['opact'], param['opacp'], param['opacw'], param['opac' + mol.lower()] = readcross(param['pkg_dir'] + 'Data/opac/' + param['opac_data'] + '/opac' + mol + '.dat')
-
     if not param['bare_rock']:
+        data = scipy.io.loadmat(param['pkg_dir'] + 'Data/opac/opac_082025.mat')
+        opac_data_keys = []
+        for i in data.keys():
+            if i != '__header__' and i != '__globals__' and i != '__version__':
+                param[i] = np.array(data[i]) + 0.0
+                opac_data_keys.append(i)
+
+        del data
+
+        # delete the opacities of the molecules we don't need
+        for mol in param['supported_molecules']:
+            if mol not in param['fit_molecules'] + [param['gas_fill']]:
+                del param['opac' + mol.lower()]
+
+        if param['gas_fill'] == 'N2' or param['gas_fill'] == 'H2':
+            param['opac' + param['gas_fill'].lower()] = np.zeros_like(param['opach2o'])
+        if 'N2' in param['fit_molecules']:
+            param['opacn2'] = np.zeros_like(param['opach2o'])
+        if 'H2' in param['fit_molecules']:
+            param['opach2'] = np.zeros_like(param['opach2o'])
+        param['opac_data_keys'] = opac_data_keys
+        param['opacaer_no_cloud'] = param['opacaerh2o'] * 0.0
+
+        if param['opac_data'] is not None:
+            for mol in param['fit_molecules'] + [param['gas_fill']]:
+                # todo: we dont have to calculate opact, opacp, opacw with every loop, just once.
+                if param['opac_dir'] is not None:
+                  param['opact'], param['opacp'], param['opacw'], param['opac' + mol.lower()] = readcross(param['opac_dir'] + param['opac_data'] + '/opac' + mol + '.dat')
+                else:
+                  param['opact'], param['opacp'], param['opacw'], param['opac' + mol.lower()] = readcross(param['pkg_dir'] + 'Data/opac/' + param['opac_data'] + '/opac' + mol + '.dat')
+                # making opacity files float32 to save space (cut memory usage by half)
+                if param['use_float32']:
+                    param['opac' + mol.lower()] = np.array(param['opac' + mol.lower()], dtype=np.float32)
+
         if not for_plotting:
             strt = find_nearest(param['opacw'][0] * 1e6, param['min_wl'] - 0.05) - 20
             end = find_nearest(param['opacw'][0] * 1e6, param['max_wl'] + 0.05) + 20
             param['opacw'] = (param['opacw'][0][strt:end]).reshape(1, -1)
+            ## cut temperature range for opacity loading
+            strtT = find_nearest(param['opact'][0],param['T_lower'])
+            endT = find_nearest(param['opact'][0],param['T_upper'])
+            param['opact'] = (param['opact'][0][strtT:endT+1]).reshape(1,-1)
+            ## cut pressure range for opacity loading (just the upper bound)
+            endP = find_nearest(param['opacp'][0],10**param['P_upper'])   # cut pressure list at value specified in retpar
+            param['opacp'] = (param['opacp'][0][:endP+1]).reshape(1,-1)
             for mol in param['fit_molecules'] + [param['gas_fill']]:
-                param['opac' + mol.lower()] = param['opac' + mol.lower()][:, :, strt:end]
+                param['opac' + mol.lower()] = param['opac' + mol.lower()][:endP + 1, strtT:endT + 1, strt:end]
+
 
         if not param['fit_T']:
             P = np.array([param['P'][::-1]]).T
@@ -834,6 +914,8 @@ def pre_load_variables(param, for_plotting=False):
             # Calculate the molecular cross-sections
             for mol in param['fit_molecules'] + [param['gas_fill']]:
                 param['forward']['S'][mol] = (interpn((param['opacp'][0], param['opact'][0], param['opacw'][0]), param['opac' + mol.lower()], np.array([param['forward']['PL'] * I2, param['forward']['TL'] * I2, I1 * param['opacw'][0]]).T)).T
+                if param['use_float32']:
+                    param['forward']['S'][mol] = np.array(param['forward']['S'][mol], dtype=np.float32)
                 del param['opac' + mol.lower()]
 
     return param
@@ -891,9 +973,12 @@ def retrieval_par_and_npar(param):
         parameters.append("Log(CR$_{NH_3}$)")
     if param['fit_gen_cld']:
         parameters.append("Log(P$_{top}$)")
-    if param['incl_haze']:
-        parameters.append("Log(diam$_{haze}$)")
-        parameters.append("Log(vmr$_{haze}$)")
+    if param['fit_tholin']:
+        parameters.append("Log(diam$_{tholin}$)")
+        parameters.append("Log(vmr$_{tholin}$)")
+    if param['fit_soot']:
+        parameters.append("Log(diam$_{soot}$)")
+        parameters.append("Log(vmr$_{soot}$)")
     if param['fit_H2O']:
         parameters.append("clr(H$_2$O)")
     if param['fit_CH4']:
@@ -904,6 +989,12 @@ def retrieval_par_and_npar(param):
         parameters.append("clr(C$_2$H$_4$)")
     if param['fit_C2H6']:
         parameters.append("clr(C$_2$H$_6$)")
+    if param['fit_C4H2']:
+        parameters.append("clr(C$_4$H$_2$)")
+    if param['fit_CH3Cl']:
+        parameters.append("clr(CH$_3$Cl)")
+    if param['fit_CH3SH']:
+        parameters.append("clr(CH$_3$SH)")
     if param['fit_NH3']:
         parameters.append("clr(NH$_3$)")
     if param['fit_HCN']:
@@ -914,6 +1005,8 @@ def retrieval_par_and_npar(param):
         parameters.append("clr(SO$_2$)")
     if param['fit_SO3']:
         parameters.append("clr(SO$_3$)")
+    if param['fit_CS2']:
+        parameters.append("clr(CS$_2$)")
     if param['fit_CO']:
         parameters.append("clr(CO)")
     if param['fit_CO2']:
@@ -922,8 +1015,14 @@ def retrieval_par_and_npar(param):
         parameters.append("clr(N$_2$O)")
     if param['fit_OCS']:
         parameters.append("clr(OCS)")
+    if param['fit_DMS']:
+        parameters.append("clr(DMS)")
+    if param['fit_PH3']:
+        parameters.append("clr(PH$_3$)")
     if param['fit_N2']:
         parameters.append("clr(N$_2$)")
+    if param['fit_H2']:
+        parameters.append("clr(H$_2$)")
     if param['incl_star_activity']:
         if param['stellar_activity_parameters'] == int(3):
             parameters.append("$\delta$" + "$_{het}$")
@@ -1017,10 +1116,24 @@ def add_noise(param, data):
             spec[i, 1] = point + 0.0
         return spec
 
-    err = np.full(len(param['spectrum']['wl']), (max(data[:, 1] / param['snr'])))
-
+    # if we are using noise file (like pandexo) then use these as the error
+    if param['use_noise_file']:
+        try:
+            error_file = np.loadtxt(param['wkg_dir']+param['noise_file'],skiprows=1)
+        except KeyError:
+            print("With use_noise_file on, you must provide a noise file")
+            sys.exit()
+        wl_e = error_file[:,0]
+        sp_e = error_file[:,1]
+        err_e = error_file[:,3]
+        # use spectres to get new errors for our wavelength grid
+        _, err = spectres(param['spectrum']['wl'],wl_e,sp_e,err_e)
+    # otherwise, calculate noise based on snr like usual
+    else:
+        err = np.full(len(param['spectrum']['wl']), (max(data[:, 1] / param['snr'])))
     spec = np.array([data[:, 0], data[:, 1], err]).T
-    spec = gaussian_noise(spec, no_less_zero=True)
+    if param['gaussian_noise']:
+        spec = gaussian_noise(spec, no_less_zero=True)
 
     return spec
 
@@ -1135,10 +1248,9 @@ def readcross(fname):
             if line_idx >= len(lines):
                 raise ValueError("Unexpected end of file while reading data block")
 
-            # Read presdummy and initial opacity values
+            # Read initial opacity values
             data_line = lines[line_idx].strip()
             data_values = data_line.split()
-            presdummy = float(data_values[0])  # If needed, store or use presdummy
             opacities = [float(val) for val in data_values[1:]]
             line_idx += 1
 
@@ -1156,6 +1268,8 @@ def readcross(fname):
             opac_block.append(opacities)
 
         opac.append(opac_block)
+
+    del lines
 
     # Convert lists to NumPy arrays for easier handling
     temp = np.array(temp)  # Shape: (NTEMP,)
