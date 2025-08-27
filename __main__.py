@@ -98,14 +98,6 @@ class CREATE_SPECTRUM:
         self.param = par_and_calc(self.param)
         self.param = load_input_spectrum(self.param)
 
-<<<<<<< Updated upstream
-        if self.param['incl_star_activity'] and self.param['st_frac'] is None:
-            raise KeyError('If you want to include the star activity in the calculation, please specify the fraction of the star covered by the activity through the parameter "st_frac"')
-        if self.param['incl_star_activity'] and self.param['Ts_het'] is None:
-            raise KeyError('If you want to include the star activity in the calculation, please specify the temperature of star hets through the parameter "Ts_het"')
-        if self.param['incl_star_activity'] and self.param['Ts_phot'] is None:
-            raise KeyError('If you want to include the star activity in the calculation, please specify the temperature of star through the parameter "Ts"')
-=======
         if param['incl_star_activity']:
             if param['stellar_activity_parameters'] == 3:
                 # CHANGED st_frac below to het_frac for consistency with forward model and multinest
@@ -126,7 +118,6 @@ class CREATE_SPECTRUM:
                     raise KeyError('If you want to include the star activity in the calculation, please specify the temperature of faculae through the parameter "Ts_fac"')
                 if param['Ts_phot'] is None:
                     raise KeyError('If you want to include the star activity in the calculation, please specify the temperature of star through the parameter "Ts"')
->>>>>>> Stashed changes
 
         if self.verbose:
             print('Planet : ' + self.param['name_p'])

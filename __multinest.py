@@ -77,14 +77,8 @@ class MULTINEST:
             This method uses MPI for parallelization. If MPI is not imported, the retrieval is run on a single processor.
             The retrieval is run using PyMultiNest, which performs Bayesian inference using the nested sampling algorithm.
         """
-<<<<<<< Updated upstream
         rank = MPIrank if MPIimport else 0
         if MPIimport and rank == 0:
-=======
-
-
-        if MPIimport and MPIrank == 0:
->>>>>>> Stashed changes
             print('Using ExoTR for transmission spectroscopy retrieval')
 
         if MPIimport:
