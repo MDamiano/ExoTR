@@ -57,7 +57,8 @@ class MULTINEST:
         self.param = param
         self.param = par_and_calc(self.param)
         self.param = load_input_spectrum(self.param)
-        self.param = pre_load_variables(self.param)
+        if MPIimport and MPIrank == 0:
+            self.param = pre_load_variables(self.param)
         self.param = ranges(self.param)
 
     def run_retrieval(self):
@@ -76,8 +77,14 @@ class MULTINEST:
             This method uses MPI for parallelization. If MPI is not imported, the retrieval is run on a single processor.
             The retrieval is run using PyMultiNest, which performs Bayesian inference using the nested sampling algorithm.
         """
+<<<<<<< Updated upstream
         rank = MPIrank if MPIimport else 0
         if MPIimport and rank == 0:
+=======
+
+
+        if MPIimport and MPIrank == 0:
+>>>>>>> Stashed changes
             print('Using ExoTR for transmission spectroscopy retrieval')
 
         if MPIimport:
@@ -149,13 +156,24 @@ class MULTINEST:
                 evaluation['ptop'] = (10. ** cube[par])  # p_top
                 par += 1
 
-            if self.param['incl_haze']:
-                evaluation['dhaze'], evaluation['vmrhaze'] = (10. ** cube[par]), (10. ** cube[par + 1])  # diameter and haze VMR
+            if self.param['fit_tholin']:
+                evaluation['dtholin'], evaluation['vmrtholin'] = (10. ** cube[par]), (10. ** cube[par + 1])  # diameter and tholin haze VMR
+                par += 2
+            elif self.param['fit_soot']:
+                evaluation['dsoot'], evaluation['vmrsoot'] = (10. ** cube[par]), (10. ** cube[par + 1])  # diameter and soot haze VMR
                 par += 2
 
-            for mol in self.param['fit_molecules']:
-                evaluation[mol] = cube[par] + 0.0  # Molecules
-                par += 1
+            if self.param['gas_par_space'] == 'clr':
+                for mol in self.param['fit_molecules']:
+                    evaluation[mol] = cube[par] + 0.0  # Molecules
+                    par += 1
+            elif self.param['gas_par_space'] == 'vmr':
+                for mol in self.param['fit_molecules']:
+                    evaluation[mol] = 10 ** cube[par]
+                    par += 1
+                evaluation[self.param['gas_fill']] = 1.0
+                for mol in self.param['fit_molecules']:
+                    evaluation[self.param['gas_fill']] -= evaluation[mol]
 
             if self.param['incl_star_activity']:
                 if self.param['stellar_activity_parameters'] == int(3):
@@ -247,22 +265,34 @@ class MULTINEST:
                 cube[par] = cube[par] * (self.param['ptop_range'][1] - self.param['ptop_range'][0]) + self.param['ptop_range'][0]  # uniform prior -> P cloud top [Pa]
                 par += 1
 
-            if self.param['incl_haze']:
-                cube[par] = cube[par] * (self.param['dhaze_range'][1] - self.param['dhaze_range'][0]) + self.param['dhaze_range'][0]
-                cube[par + 1] = cube[par + 1] * (self.param['vmrhaze_range'][1] - self.param['vmrhaze_range'][0]) + self.param['vmrhaze_range'][0]
+            if self.param['fit_tholin']:
+                cube[par] = cube[par] * (self.param['dtholin_range'][1] - self.param['dtholin_range'][0]) + self.param['dtholin_range'][0]
+                cube[par + 1] = cube[par + 1] * (self.param['vmrtholin_range'][1] - self.param['vmrtholin_range'][0]) + self.param['vmrtholin_range'][0]
+                par += 2
+
+            elif self.param['fit_soot']:
+                cube[par] = cube[par] * (self.param['dsoot_range'][1] - self.param['dsoot_range'][0]) + self.param['dsoot_range'][0]
+                cube[par + 1] = cube[par + 1] * (self.param['vmrsoot_range'][1] - self.param['vmrsoot_range'][0]) + self.param['vmrsoot_range'][0]
                 par += 2
 
             for _ in self.param['fit_molecules']:
-                if self.param['clr_prior'] == 'modified' or self.param['clr_prior'] == 'hybrid':
-                    cube[par] = ppf(cube[par])  # modified prior for clr
-                else:
-                    cube[par] = cube[par] * (self.param['gas_clr_range'][1] - self.param['gas_clr_range'][0]) + self.param['gas_clr_range'][0]  # standard clr range
+                if self.param['gas_par_space'] == 'clr':
+                    if self.param['clr_prior'] == 'modified' or self.param['clr_prior'] == 'hybrid':
+                        cube[par] = ppf(cube[par])  # modified prior for clr
+                    else:
+                        cube[par] = cube[par] * (self.param['gas_clr_range'][1] - self.param['gas_clr_range'][0]) + self.param['gas_clr_range'][0]  # standard clr range
+                elif self.param['gas_par_space'] == 'vmr':
+                    cube[par] = cube[par] * (self.param['gas_vmr_range'][1] - self.param['gas_vmr_range'][0]) + self.param['gas_vmr_range'][0]
                 par += 1
 
             if self.param['incl_star_activity']:
                 if self.param['stellar_activity_parameters'] == int(3):
                     cube[par] = cube[par] * (self.param['delta_range'][1] - self.param['delta_range'][0]) + self.param['delta_range'][0]  # uniform prior -> star activity coverage fraction
                     par += 1
+                    print("A")
+                    print(cube[par])
+                    print("B")
+                    print(cube[par + 1])
                     cube[par], cube[par + 1] = Ts_prior(self.param, cube[par + 1], Ts_het_cube=cube[par])
                     par += 2
 
@@ -393,12 +423,11 @@ class MULTINEST:
                         self.plot_P_profiles()
                         self.plot_contribution()
 
-                    if self.param['fit_offset']:
-                        if self.param['spectrum']['bins']:
-                            data_spec = np.array([self.param['spectrum']['wl_low'][self.param['sorted_data_idx']], self.param['spectrum']['wl_high'][self.param['sorted_data_idx']], self.param['spectrum']['wl'][self.param['sorted_data_idx']], self.param['spectrum']['T_depth'][self.param['sorted_data_idx']], self.param['spectrum']['error_T'][self.param['sorted_data_idx']]]).T
-                        else:
-                            data_spec = np.array([self.param['spectrum']['wl'][self.param['sorted_data_idx']], self.param['spectrum']['T_depth'][self.param['sorted_data_idx']], self.param['spectrum']['error_T'][self.param['sorted_data_idx']]]).T
-                        np.savetxt(self.param['out_dir'] + 'data_spectrum_mean.dat', data_spec)
+                    if self.param['spectrum']['bins']:
+                        data_spec = np.array([self.param['spectrum']['wl_low'][self.param['sorted_data_idx']], self.param['spectrum']['wl_high'][self.param['sorted_data_idx']], self.param['spectrum']['wl'][self.param['sorted_data_idx']], self.param['spectrum']['T_depth'][self.param['sorted_data_idx']], self.param['spectrum']['error_T'][self.param['sorted_data_idx']]]).T
+                    else:
+                        data_spec = np.array([self.param['spectrum']['wl'][self.param['sorted_data_idx']], self.param['spectrum']['T_depth'][self.param['sorted_data_idx']], self.param['spectrum']['error_T'][self.param['sorted_data_idx']]]).T
+                    np.savetxt(self.param['out_dir'] + 'data_spectrum_mean.dat', data_spec)
 
                     cube[:, 0] = list(s['modes'][0]['maximum a posterior'])
 
@@ -493,17 +522,30 @@ class MULTINEST:
             self.param['P_top'] = (10. ** cube[par])  # p_top
             par += 1
 
-        if self.param['incl_haze']:
-            self.param['diam_haze'] = (10. ** cube[par])
-            self.param['vmr_haze'] = (10. ** cube[par + 1])
+        if self.param['fit_tholin']:
+            self.param['diam_tholin'] = (10. ** cube[par])
+            self.param['vmr_tholin'] = (10. ** cube[par + 1])
+            par += 2
+
+        elif self.param['fit_soot']:
+            self.param['diam_soot'] = (10. ** cube[par])
+            self.param['vmr_soot'] = (10. ** cube[par + 1])
             par += 2
 
         if not self.param['bare_rock']:
-            clogr = {}
-            for i in self.param['fit_molecules']:
-                clogr[i] = cube[par] + 0.0
-                par += 1
-            self.param = clr_to_vmr(self.param, clogr)
+            if self.param['gas_par_space'] == 'clr':
+                clogr = {}
+                for i in self.param['fit_molecules']:
+                    clogr[i] = cube[par] + 0.0
+                    par += 1
+                self.param = clr_to_vmr(self.param, clogr)
+            elif self.param['gas_par_space'] == 'vmr':
+                for i in self.param['fit_molecules']:
+                    self.param['vmr_' + i] = 10. ** cube[par]
+                    par += 1
+                self.param['vmr_' + self.param['gas_fill']] = 1.0
+                for i in self.param['fit_molecules']:
+                    self.param['vmr_' + self.param['gas_fill']] -= self.param['vmr_' + i]
             if self.param['incl_clouds'] and self.param['cloud_type'] == 'water':
                 self.param = cloud_pos(self.param)
             self.param = calc_mean_mol_mass(self.param)
@@ -578,6 +620,7 @@ class MULTINEST:
             temp_max_wl = self.param['max_wl'] + 0.0
             self.param['max_wl'] = 20.
         else:
+            #todo: debug: this is probably where the contribution plots tend to 0 (since T,P range is cut)
             new_wl = reso_range(self.param['min_wl'] - 0.05, self.param['max_wl'] + 0.05, res=500, bins=True)
         new_wl_central = np.mean(new_wl, axis=1)
         if self.param['spectrum']['bins']:
@@ -591,17 +634,24 @@ class MULTINEST:
         temp_sorted_data_idx = copy.deepcopy(self.param['sorted_data_idx'])
         self.param['sorted_data_idx'] = np.argsort(self.param['spectrum']['wl'])
 
+        #debug: more cutting out stuff now
+        if self.param['opac_data'] == '200k':
+            last = -1
+        else:
+            last = None
+
         wl, model = forward(self.param, retrieval_mode=False)
         if not MAP:
             lab = 'Retrieved mean'
         else:
             lab = 'Retrieved maximum a posteriori'
-        plt.plot(wl, model*1e6, color='#404784', label=lab)
+        plt.plot(wl[:last], model[:last]*1e6, color='#404784', label=lab)
 
-        best_fit = np.array([wl, model]).T
+        best_fit = np.array([wl[:last], model[:last]]).T
 
         if os.path.isfile(self.param['out_dir'] + 'random_samples.dat'):
             fl = np.loadtxt(self.param['out_dir'] + 'random_samples.dat')
+            fl = fl[:last]
             plt.fill_between(fl[:, 0], (best_fit[:, 1] + (np.quantile(fl[:, 1:], [0.00135, 0.99865], axis=1)[1] - np.quantile(fl[:, 1:], 0.5, axis=1))) * 1e6, (best_fit[:, 1] + (np.quantile(fl[:, 1:], [0.00135, 0.99865], axis=1)[0] - np.quantile(fl[:, 1:], 0.5, axis=1))) * 1e6, ec=('#404784', 0.0), fc=('#404784', 0.25), label='3$\sigma$')
             plt.fill_between(fl[:, 0], (best_fit[:, 1] + (np.quantile(fl[:, 1:], [0.0225, 0.9775], axis=1)[1] - np.quantile(fl[:, 1:], 0.5, axis=1))) * 1e6, (best_fit[:, 1] + (np.quantile(fl[:, 1:], [0.0225, 0.9775], axis=1)[0] - np.quantile(fl[:, 1:], 0.5, axis=1))) * 1e6, ec=('#404784', 0.0), fc=('#404784', 0.5), label='2$\sigma$')
             plt.fill_between(fl[:, 0], (best_fit[:, 1] + (np.quantile(fl[:, 1:], [0.16, 0.84], axis=1)[1] - np.quantile(fl[:, 1:], 0.5, axis=1))) * 1e6, (best_fit[:, 1] + (np.quantile(fl[:, 1:], [0.16, 0.84], axis=1)[0] - np.quantile(fl[:, 1:], 0.5, axis=1))) * 1e6, ec=('#404784', 0.0), fc=('#404784', 0.75), label='1$\sigma$')
@@ -850,6 +900,14 @@ class MULTINEST:
                 os.mkdir(self.param['out_dir'] + 'Contr_spec_MAP/')
             out_fldr = self.param['out_dir'] + 'Contr_spec_MAP/'
 
+        # if using the 200k opacities, the last wl value in the new R=500 wl range exceeds the last value in the 200k wl grid
+        # so omit last wl value
+        # do this by keeping the var stored as -1 so last value is omitted
+        if self.param['opac_data'] == '200k':
+            last = -1
+        else:
+            last = None
+
         fig = plt.figure(figsize=(12, 5))
 
         if self.param['extended_wl_plot']:
@@ -882,8 +940,7 @@ class MULTINEST:
             comp = np.array([wl, model]).T
             np.savetxt(out_fldr + 'contr_CIA.dat', comp)
             self.param['CIA_contribution'] = False
-
-            plt.plot(wl, model * 1e6, linestyle='--', label='H$_2$-H$_2$ CIA')
+            plt.plot(wl[:last], model[:last] * 1e6, linestyle='--', label='H$_2$-H$_2$ CIA')
 
         print('Plotting the Rayleigh scattering contribution')
         self.param['Rayleigh_contribution'] = True
@@ -892,7 +949,7 @@ class MULTINEST:
         np.savetxt(out_fldr + 'contr_Rayleigh.dat', comp)
         self.param['Rayleigh_contribution'] = False
 
-        plt.plot(wl, model * 1e6, linestyle='--', label='Rayleigh scattering')
+        plt.plot(wl[:last], model[:last] * 1e6, linestyle='--', label='Rayleigh scattering')
 
         if self.param['incl_clouds']:
             print('Plotting the contribution of cloud')
@@ -902,7 +959,7 @@ class MULTINEST:
             np.savetxt(out_fldr + 'contr_cloud.dat', comp)
             self.param['cld_contribution'] = False
 
-            plt.plot(wl, model * 1e6, linestyle='--', label='Cloud')
+            plt.plot(wl[:last], model[:last] * 1e6, linestyle='--', label='Cloud')
 
         if self.param['incl_haze']:
             print('Plotting the contribution of haze')
@@ -912,7 +969,7 @@ class MULTINEST:
             np.savetxt(out_fldr + 'contr_haze.dat', comp)
             self.param['haze_contribution'] = False
 
-            plt.plot(wl, model * 1e6, linestyle='--', label='Haze')
+            plt.plot(wl[:last], model[:last] * 1e6, linestyle='--', label='Haze')
 
         if self.param['incl_star_activity']:
             print('Plotting the contribution of the star activity')
@@ -922,7 +979,7 @@ class MULTINEST:
             np.savetxt(out_fldr + 'contr_star.dat', comp)
             self.param['star_act_contribution'] = False
 
-            plt.plot(wl, model * 1e6, linestyle='--', label='Star heterogeneity')
+            plt.plot(wl[:last], model[:last] * 1e6, linestyle='--', label='Star heterogeneity')
 
         if not self.param['bare_rock']:
             print('Plotting the contribution of atmospheric gases')
@@ -933,7 +990,7 @@ class MULTINEST:
             np.savetxt(out_fldr + 'contr_' + mol + '.dat', comp)
             self.param[mol + '_contribution'] = False
 
-            plt.plot(wl, model * 1e6, linewidth=0.5, label=mol)
+            plt.plot(wl[:last], model[:last] * 1e6, linewidth=0.5, label=mol)
 
         for mol in self.param['fit_molecules'] + [self.param['gas_fill']]:
             self.param[mol + '_contribution'] = True
@@ -945,7 +1002,7 @@ class MULTINEST:
 
         wl, model = forward(self.param, retrieval_mode=False)
 
-        plt.plot(wl, model * 1e6, color='black', label='MAP solution R=500')
+        plt.plot(wl[:last], model[:last] * 1e6, color='black', label='MAP solution R=500')
 
         self.param['spectrum']['wl'] = temp_wl + 0.0
         self.param['sorted_data_idx'] = copy.deepcopy(temp_sorted_data_idx)
@@ -1171,14 +1228,21 @@ class MULTINEST:
                     mmm = volume_mixing_ratio[self.param['gas_fill']] * self.param['mm'][self.param['gas_fill']]
                     b[:, z + i + 1] = np.array(mmm) + 0.0
                 else:
-                    clr_mtrx = np.zeros((len(a[:, 0]), len(self.param['fit_molecules']) + 1))
-                    for i in range(0, len(self.param['fit_molecules'])):
-                        clr_mtrx[:, i] = np.array(a[:, z + i])
-                    clr_mtrx[:, -1] = -np.sum(clr_mtrx[:, :-1], axis=1)
-                    vmr_mtrx = clr_inv(clr_mtrx)
+                    if self.param['gas_par_space'] == 'clr':
+                        clr_mtrx = np.zeros((len(a[:, 0]), len(self.param['fit_molecules']) + 1))
+                        for i in range(0, len(self.param['fit_molecules'])):
+                            clr_mtrx[:, i] = np.array(a[:, z + i])
+                        clr_mtrx[:, -1] = -np.sum(clr_mtrx[:, :-1], axis=1)
+                        vmr_mtrx = clr_inv(clr_mtrx)
 
-                    for i, mol in enumerate(self.param['fit_molecules'] + [self.param['gas_fill']]):
-                        volume_mixing_ratio[mol] = vmr_mtrx[:, i]
+                        for i, mol in enumerate(self.param['fit_molecules'] + [self.param['gas_fill']]):
+                            volume_mixing_ratio[mol] = vmr_mtrx[:, i]
+                    elif self.param['gas_par_space'] == 'vmr':
+                        volume_mixing_ratio[self.param['gas_fill']] = np.ones(len(a[:, 0]))
+                        for i, mol in enumerate(self.param['fit_molecules']):
+                            volume_mixing_ratio[mol] = 10.0 ** np.array(a[:, z + i])
+                            volume_mixing_ratio[self.param['gas_fill']] -= 10**(np.array(a[:, z + i]))
+
 
                     mmm = np.zeros(len(a[:, 0]))
                     for mol in volume_mixing_ratio.keys():
@@ -1231,9 +1295,12 @@ class MULTINEST:
                 par.append("Log(CR$_{NH_3}$)")
             if self.param['fit_gen_cld']:
                 par.append("Log(P$_{top}$)")
-            if self.param['incl_haze']:
-                par.append("Log(d$_{haze}$)")
-                par.append("Log(haze)")
+            if self.param['fit_tholin']:
+                par.append("Log(d$_{tholin}$)")
+                par.append("Log(tholin)")
+            elif self.param['fit_soot']:
+                par.append("Log(d$_{soot}$)")
+                par.append("Log(soot)")
             if not self.param['bare_rock']:
                 for mol in self.param['fit_molecules']:
                     par.append(self.param['formatted_labels'][mol])
@@ -2388,6 +2455,24 @@ class MULTINEST:
 
                 n, b, _ = ax.hist(x, bins=75, weights=weights, color=color, range=np.sort(span[i]), **hist_kwargs)
 
+                # if isinstance(sx, int_type):
+                #     # If `sx` is an integer, plot a weighted histogram with
+                #     # `sx` bins within the provided bounds.
+                #     n, b, _ = ax.hist(x, bins=sx, weights=weights, color=color,
+                #                       range=np.sort(span[i]), **hist_kwargs)
+                # else:
+                #     # If `sx` is a float, oversample the data relative to the
+                #     # smoothing filter by a factor of 10, then use a Gaussian
+                #     # filter to smooth the results.
+                #     bins = int(round(10. / sx))
+                #     n, b = np.histogram(x, bins=bins, weights=weights,
+                #                         range=np.sort(span[i]))
+                #     n = norm_kde(n, 10.)
+                #     b0 = 0.5 * (b[1:] + b[:-1])
+                #     n, b, _ = ax.hist(b0, bins=b, weights=n,
+                #                       range=np.sort(span[i]), color=color,
+                #                       **hist_kwargs)
+
                 if ax.get_ylim()[1] < max(n) * 1.05:
                     ax.set_ylim([0., max(n) * 1.05])
                 else:
@@ -2544,7 +2629,6 @@ class MULTINEST:
                 fl.write('ln Z               = ' + str(round(Z, 2)) + ' +- ' + str(round(nest_out['global_logE'][1], 2)) + '\n')
                 fl.write('\n')
                 fl.write('##################################################\n')
-
         else:
             colors = ['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728', '#9467bd', '#8c564b', '#e377c2', '#7f7f7f']
             nest_out = _store_nest_solutions()
@@ -2618,3 +2702,137 @@ class MULTINEST:
 
             os.system('mv ' + prefix + 'params.json ' + prefix + '_PostProcess.json')
             os.system('mv ' + prefix + 'params_original.json ' + prefix + 'params.json')
+
+    def elpd_loo_stats(self, parameters, solutions=None):
+        print('\n#### EXECUTING CROSS VALIDATION LEAVE-ONE-OUT STATISTICS ####')
+        loglike_samples = np.loadtxt(self.param['out_dir'] + 'loglike_per_datapoint.dat')
+        par_samples = np.loadtxt(self.param['out_dir'] + 'parameters_samples.dat')
+
+        n_samples = np.shape(loglike_samples)[0]
+        n_obs = np.shape(loglike_samples)[1]
+        n_chains = 1
+
+        if n_samples < 10000:
+            print('WARNING - The number of sampled pointwise log-likelihood is lower than 10000 (' + str(n_samples) +'). elpd_loo statistics might be unreliable.')
+
+        loglike_samples = loglike_samples.reshape(n_chains, n_samples, n_obs)
+
+        observed_data = {"data": self.param['spectrum']['T_depth'][self.param['sorted_data_idx']]}
+
+        posterior_samples = {}
+        for i in range(self.param['model_n_par']):
+            posterior_samples[parameters[i]] = par_samples[:, i].reshape(n_chains, n_samples)  # Shape: (1, n_samples)
+
+        # Create the InferenceData object
+        idata = az.from_dict(
+            posterior=posterior_samples,
+            observed_data=observed_data,
+            log_likelihood={"data": loglike_samples}
+        )
+
+        # Compute PSIS-LOO
+        loo_result = az.loo(idata, pointwise=True)
+        # Access Pareto k values
+        pareto_k = loo_result.pareto_k.values  # Shape: (n_observations,)
+
+        bad_pnt = np.where(pareto_k > 0.7)[0]
+        good_pnt = np.where(pareto_k < 0.7)[0]
+
+        fig = plt.figure(figsize=(8, 5))
+        plt.plot(self.param['spectrum']['wl'][self.param['sorted_data_idx']][good_pnt], pareto_k[good_pnt], 'ko')
+        plt.plot(self.param['spectrum']['wl'][self.param['sorted_data_idx']][bad_pnt], pareto_k[bad_pnt], 'ro')
+        plt.axhline(0.5, color='green', linestyle='--')
+        plt.axhline(0.7, color='red', linestyle='--', label='k = 0.7 Threshold')
+        plt.xlabel('Wavelength [$\mu$m]')
+        plt.ylabel('Pareto $k$')
+        plt.legend()
+        fig.tight_layout()
+        if solutions is None:
+            plt.savefig(self.param['out_dir'] + 'pareto_k.pdf')
+
+        else:
+            plt.savefig(self.param['out_dir'] + 'pareto_k_(solution ' + str(solutions) + ').pdf')
+        plt.close()
+
+        if len(bad_pnt) != 0:
+            print(str(len(bad_pnt)) + ' pareto k values above 0.7 detected. Please review.')
+        else:
+            print('No pareto k values above 0.7 detected.')
+
+        # Total elpd_loo
+        total_elpd_loo = loo_result.elpd_loo
+        # Standard error of elpd_loo
+        elpd_loo_se = loo_result.se
+        # Pointwise elpd_loo values
+        elpd_loo_pointwise = loo_result.loo_i
+
+        fig = plt.figure(figsize=(8, 5))
+        plt.scatter(pareto_k[good_pnt], elpd_loo_pointwise[good_pnt], color='black')
+        plt.scatter(pareto_k[bad_pnt], elpd_loo_pointwise[bad_pnt], color='red')
+        plt.xlabel('Pareto k')
+        plt.ylabel('Pointwise elpd_loo')
+        plt.axvline(0.7, color='red', linestyle='--', label='k = 0.7 Threshold')
+        plt.axvline(0.5, color='green', linestyle='--')
+        plt.legend()
+        fig.tight_layout()
+        if solutions is None:
+            plt.savefig(self.param['out_dir'] + 'pareto_k_vs_elpd_loo.pdf')
+        else:
+            plt.savefig(self.param['out_dir'] + 'pareto_k_vs_elpd_loo_(solution ' + str(solutions) + ').pdf')
+        plt.close()
+
+        fig = plt.figure(figsize=(8, 5))
+        plt.errorbar(self.param['spectrum']['wl'][self.param['sorted_data_idx']], self.param['spectrum']['T_depth'][self.param['sorted_data_idx']] * 1e6, yerr=self.param['spectrum']['error_T'][self.param['sorted_data_idx']] * 1e6,
+                     linestyle='', linewidth=0.5, color='black', capsize=1.75, marker=None, zorder=1)
+        sc = plt.scatter(self.param['spectrum']['wl'][self.param['sorted_data_idx']], self.param['spectrum']['T_depth'][self.param['sorted_data_idx']] * 1e6, c=elpd_loo_pointwise, cmap='viridis', s=40, edgecolor='black',
+                         linewidth=0.5, zorder=2)
+        cbar = plt.colorbar(sc)
+        cbar.set_label('elpd$_{i,Reference}$')
+        plt.xlabel('Wavelength [$\mu$m]')
+        plt.ylabel('Transit depth (R$_p$/R$_{\star}$)$^2$ [ppm]')
+        fig.tight_layout()
+        if solutions is None:
+            plt.savefig(self.param['out_dir'] + 'elpd_loo.pdf')
+        else:
+            plt.savefig(self.param['out_dir'] + 'elpd_loo_(solution ' + str(solutions) + ').pdf')
+        plt.close()
+
+        elpd_stats = {'pareto_k': pareto_k.tolist(), 'total_elpd_loo': float(total_elpd_loo), 'elpd_loo_se': float(elpd_loo_se), 'elpd_loo_pointwise': elpd_loo_pointwise.values.tolist()}
+        json.dump(elpd_stats, open(self.param['out_dir'] + 'elpd_loo_statistics.json', 'w'))  # save statistics dictionary
+
+        if self.param['elpd_reference'] is not None:
+            ref_elpd = json.load(open(self.param['elpd_reference']))
+            delta_elpd = np.array(ref_elpd['elpd_loo_pointwise']) - elpd_stats['elpd_loo_pointwise']
+            delta_elpd_err = np.sqrt(len(delta_elpd) * np.var(delta_elpd, ddof=0))
+
+            fig = plt.figure(figsize=(8, 5))
+            plt.errorbar(self.param['spectrum']['wl'][self.param['sorted_data_idx']], self.param['spectrum']['T_depth'][self.param['sorted_data_idx']] * 1e6, yerr=self.param['spectrum']['error_T'][self.param['sorted_data_idx']] * 1e6,
+                         linestyle='', linewidth=0.5, color='black', capsize=1.75, marker=None, zorder=1)
+            sc = plt.scatter(self.param['spectrum']['wl'][self.param['sorted_data_idx']], self.param['spectrum']['T_depth'][self.param['sorted_data_idx']] * 1e6, c=delta_elpd, cmap='seismic', s=40, edgecolor='black',
+                             linewidth=0.5, zorder=2)
+            cbar = plt.colorbar(sc)
+            cbar.set_label('elpd$_{i,Reference}$ - elpd$_{i}$')
+            plt.xlabel('Wavelength [$\mu$m]')
+            plt.ylabel('Transit depth (R$_p$/R$_{\star}$)$^2$ [ppm]')
+            fig.tight_layout()
+            if solutions is None:
+                plt.savefig(self.param['out_dir'] + 'elpd_loo_comparison.pdf')
+            else:
+                plt.savefig(self.param['out_dir'] + 'elpd_loo_comparison_(solution ' + str(solutions) + ').pdf')
+            plt.close()
+
+            fig = plt.figure(figsize=(4, 4))
+            plt.bar(['Model parameter'], [np.sum(delta_elpd) / delta_elpd_err], color='red')
+            plt.hlines(0.0, -1, 2, linestyles='--', color='black')
+            plt.text(1, 1, 'Increased\n predictive\n performance')
+            plt.text(1, -2.2, 'Decreased\n predictive\n performance')
+            plt.ylim([-5, 5])
+            plt.xlim([-1, 2])
+            plt.ylabel('$\Delta$elpd/SE')
+            plt.xlabel('Adding Model Component')
+            fig.tight_layout()
+            if solutions is None:
+                plt.savefig(self.param['out_dir'] + 'elpd_loo_SE_comparison.pdf')
+            else:
+                plt.savefig(self.param['out_dir'] + 'elpd_loo_SE_comparison_(solution ' + str(solutions) + ').pdf')
+            plt.close()
