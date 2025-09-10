@@ -176,10 +176,24 @@ class FORWARD_MODEL:
 
                 # Opacity
                 if self.param['fit_wtr_cld']:
-                    tck = interp2d(self.param['opacwa'][0], self.param['opacda'][0], self.param['opacaerh2o'])
+                    tck = RegularGridInterpolator(
+                        (self.param['opacda'][0], self.param['opacwa'][0]),
+                        self.param['opacaerh2o'],
+                        bounds_error=False,
+                        fill_value=None,
+                        method='linear'
+                    )
                 elif self.param['fit_amn_cld']:
-                    tck = interp2d(self.param['opacwa'][0], self.param['opacda'][0], self.param['opacaernh3'])
-                SAER = tck(self.param['opacw'][0], DA) * 1e-4
+                    tck = RegularGridInterpolator(
+                        (self.param['opacda'][0], self.param['opacwa'][0]),
+                        self.param['opacaernh3'],
+                        bounds_error=False,
+                        fill_value=None,
+                        method='linear'
+                    )
+                # Evaluate over the (diameter, wavelength) grid
+                W_grid, D_grid = np.meshgrid(self.param['opacw'][0], DA)
+                SAER = tck(np.column_stack([D_grid.ravel(), W_grid.ravel()])).reshape(D_grid.shape) * 1e-4
 
                 # Mass
                 VI = np.array([VP * 1e-3]).T
@@ -192,15 +206,29 @@ class FORWARD_MODEL:
         # Tholin Haze
         if self.param['incl_haze'] and self.param['haze_contribution']:
             if self.param['fit_tholin']:
-                tck_haze = interp2d(self.param['opacwa'][0], self.param['opacda'][0], self.param['opacaertholin'])
+                tck_haze = RegularGridInterpolator(
+                    (self.param['opacda'][0], self.param['opacwa'][0]),
+                    self.param['opacaertholin'],
+                    bounds_error=False,
+                    fill_value=None,
+                    method='linear'
+                )
                 d_haze = np.full(np.shape(NL), self.param['diam_tholin'])
                 f_haze = self.param['vmr_tholin']
             elif self.param['fit_soot']:
-                tck_haze = interp2d(self.param['opacwa'][0], self.param['opacda'][0], self.param['opacaersoot'])
+                tck_haze = RegularGridInterpolator(
+                    (self.param['opacda'][0], self.param['opacwa'][0]),
+                    self.param['opacaersoot'],
+                    bounds_error=False,
+                    fill_value=None,
+                    method='linear'
+                )
                 d_haze = np.full(np.shape(NL), self.param['diam_soot'])
                 f_haze = self.param['vmr_soot']
 
-            S_haze = tck_haze(self.param['opacw'][0], np.ndarray.flatten(d_haze)) * 1e-4
+            # Evaluate haze cross-sections over (diameter, wavelength) grid
+            W_haze, D_haze = np.meshgrid(self.param['opacw'][0], np.ndarray.flatten(d_haze))
+            S_haze = tck_haze(np.column_stack([D_haze.ravel(), W_haze.ravel()])).reshape(D_haze.shape) * 1e-4
             # parameterize by fraction f_haze and mass (mp*mmm/volume/density) // density assumed: 800 kg/m^3
             N_haze = f_haze * NL * const.u.value * mul / (4 / 3 * math.pi * (d_haze / 2 / 1e6) ** 3 * 800)
 
