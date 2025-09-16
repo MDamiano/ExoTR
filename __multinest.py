@@ -283,10 +283,6 @@ class MULTINEST:
                 if self.param['stellar_activity_parameters'] == int(3):
                     cube[par] = cube[par] * (self.param['delta_range'][1] - self.param['delta_range'][0]) + self.param['delta_range'][0]  # uniform prior -> star activity coverage fraction
                     par += 1
-                    print("A")
-                    print(cube[par])
-                    print("B")
-                    print(cube[par + 1])
                     cube[par], cube[par + 1] = Ts_prior(self.param, cube[par + 1], Ts_het_cube=cube[par])
                     par += 2
 
