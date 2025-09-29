@@ -380,7 +380,6 @@ class FORWARD_MODEL:
                 t_star1 = t_star - 100
                 t_star2 = t_star + 0.0
             else:
-                t_star = str(t_star / 100)
                 interp_Ts = False
 
             if interp_Ts:
@@ -398,7 +397,14 @@ class FORWARD_MODEL:
                     t_star2 = '0' + str(int(t_star2 / 100))
                 else:
                     t_star2 = str(int(t_star2 / 100))
-
+            else:
+                if t_star < 1000:
+                    t_star = '00' + str(int(t_star / 100))
+                elif t_star < 10000:
+                    t_star = '0' + str(int(t_star / 100))
+                else:
+                    t_star = str(int(t_star / 100))
+            
             try:
                 self.param['Loggs'] += 0.0
             except KeyError:
