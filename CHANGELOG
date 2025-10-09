@@ -1,3 +1,8 @@
+## [1.6.4] - 2025-10-09
+- Noise imports now read directly from the provided file path and support rebinning PandExo-style errors onto arbitrary wavelength grids.
+- Introduced `custom_spectral_binning` to handle per-bin noise propagation when the spectrum is supplied as pre-defined bins.
+- Fixed general general cloud setup in `CREATE_SPECTRUM`.
+
 ## [1.6.3] - 2025-08-18
 - Added support for retrieving on vmr space; can specify upper bound of mixing ratio with vmr_upper, default is -0.3 (50% upper limit on any non-fill, fitting gas)
 - Now possible to define planet temperature prior bounds and planet surface pressure upper bound with T_upper, T_lower, P_upper (defaults to 2000, 100, 8)

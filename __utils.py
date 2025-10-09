@@ -105,8 +105,7 @@ def default_parameters():
     #### [SYNTHESIZING SPECTRUM PARAMETERS] ####
     param['add_noise'] = False
     param['gaussian_noise'] = True
-    param['use_noise_file'] = False
-    param['noise_file'] = None
+    param['use_noise_file'] = None
     param['snr'] = 20
     param['return_bins'] = False
 
@@ -1071,6 +1070,57 @@ def clr_to_vmr(param, clogr):
     return param
 
 
+def custom_spectral_binning(x, wl, model, err=None, bins=False):
+    binned_mod = []
+    if err is not None:
+        binned_er = []
+
+    if not bins:
+        y = np.roll(x, 1) + 0.0
+        dx = (x - y)[1:]
+        limits = []
+
+        i, intermed = 0, 0
+        while i in range(0, len(dx)):
+            if dx[i] == dx[0]:
+                lim = (dx[i] / 2., dx[i] / 2.)
+                limits.append(lim)
+            elif dx[i] > 2 * np.median(dx[intermed:i]):
+                lim = (dx[i - 1] / 2., dx[i - 1] / 2.)
+                limits.append(lim)
+                i += 1
+                if i != len(dx):
+                    lim = (dx[i] / 2., dx[i] / 2.)
+                    limits.append(lim)
+                    intermed = i + 1
+                else:
+                    break
+            else:
+                lim = (dx[i - 1] / 2., dx[i] / 2.)
+                limits.append(lim)
+            i += 1
+        limits.append((dx[i - 1] / 2., dx[i - 1] / 2.))
+
+        for i in range(0, len(x)):
+            yy = np.array(model[np.where((wl > x[i] - limits[i][0]) & (wl < x[i] + limits[i][1]))[0]])
+            binned_mod.append(np.mean(yy))
+            if err is not None:
+                er = np.array(err[np.where((wl > x[i] - limits[i][0]) & (wl < x[i] + limits[i][1]))[0]])
+                binned_er.append(np.sqrt(np.sum(er ** 2.)) / len(er))
+    else:
+        for i in range(0, len(x[:, 0])):
+            yy = np.array(model[np.where((wl > x[i, 0]) & (wl < x[i, 1]))[0]])
+            binned_mod.append(np.mean(yy))
+            if err is not None:
+                er = np.array(err[np.where((wl > x[i, 0]) & (wl < x[i, 1]))[0]])
+                binned_er.append(np.sqrt(np.sum(er ** 2.)) / len(er))
+
+    if err is None:
+        return np.array(binned_mod)
+    else:
+        return np.array(binned_mod), np.array(binned_er)
+
+
 def add_noise(param, data):
     """
         This function adds Gaussian noise to a given set of spectral data.
@@ -1117,17 +1167,20 @@ def add_noise(param, data):
         return spec
 
     # if we are using noise file (like pandexo) then use these as the error
-    if param['use_noise_file']:
+    if param['use_noise_file'] is not None:
         try:
-            error_file = np.loadtxt(param['wkg_dir']+param['noise_file'],skiprows=1)
+            error_file = np.loadtxt(param['use_noise_file'],skiprows=0)
         except KeyError:
             print("With use_noise_file on, you must provide a noise file")
             sys.exit()
         wl_e = error_file[:,0]
         sp_e = error_file[:,1]
-        err_e = error_file[:,3]
+        err_e = error_file[:,2]
+        if param['spectrum']['bins']:
+            _, err = custom_spectral_binning(param['spectrum']['wl_bins'], wl_e, sp_e, err=err_e, bins=param['spectrum']['bins'])
         # use spectres to get new errors for our wavelength grid
-        _, err = spectres(param['spectrum']['wl'],wl_e,sp_e,err_e)
+        else:
+            _, err = spectres(param['spectrum']['wl'],wl_e,sp_e,err_e)
     # otherwise, calculate noise based on snr like usual
     else:
         err = np.full(len(param['spectrum']['wl']), (max(data[:, 1] / param['snr'])))
