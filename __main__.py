@@ -129,6 +129,17 @@ class CREATE_SPECTRUM:
                 self.param['vmr_' + mol] += 0.0
             except KeyError:
                 self.param['vmr_' + mol] = 0.0
+                
+        if self.param['fit_wtr_cld']:
+            print('Log(H2O_Ptop) \t = \t' + str(self.param['pH2O']))
+            print('Log(H2O_D) \t = \t' + str(self.param['dH2O']))
+            print('Log(H2O_CR) \t = \t' + str(self.param['crH2O']))
+        if self.param['fit_amn_cld']:
+            print('Log(NH3_Ptop) \t = \t' + str(self.param['pH2O']))
+            print('Log(NH3_D) \t = \t' + str(self.param['dH2O']))
+            print('Log(HN3_CR) \t = \t' + str(self.param['crH2O']))
+        if self.param['fit_gen_cld']:
+            print('Log(Ptop) \t = \t' + str(self.param['P_top']))
 
         if self.param['fit_wtr_cld']:
             self.param['Pw_top'] = 10. ** self.param['pH2O']
@@ -138,17 +149,8 @@ class CREATE_SPECTRUM:
             self.param['Pa_top'] = 10. ** self.param['pNH3']
             self.param['clda_depth'] = 10. ** self.param['dNH3']
             self.param['CR_NH3'] = 10. ** self.param['crNH3']
-
-        if self.param['fit_wtr_cld']:
-            print('Log(H2O_Ptop) \t = \t' + str(self.param['pH2O']))
-            print('Log(H2O_D) \t = \t' + str(self.param['dH2O']))
-            print('Log(H2O_CR) \t = \t' + str(self.param['crH2O']))
-        elif self.param['fit_amn_cld']:
-            print('Log(NH3_Ptop) \t = \t' + str(self.param['pH2O']))
-            print('Log(NH3_D) \t = \t' + str(self.param['dH2O']))
-            print('Log(HN3_CR) \t = \t' + str(self.param['crH2O']))
-        elif self.param['fit_gen_cld']:
-            print('Log(Ptop) \t = \t' + str(self.param['P_top']))
+        if self.param['fit_gen_cld']:
+            self.param['P_top'] = 10. ** self.param['P_top']
 
         if self.param['fit_tholin']:
             print('diam_tholin \t = \t' + str(self.param['diam_tholin']))
