@@ -158,6 +158,9 @@ class CREATE_SPECTRUM:
         elif self.param['fit_soot']:
             print('diam_soot \t = \t' + str(self.param['diam_soot']))
             print('vmr_soot \t = \t' + str(self.param['vmr_soot']))
+        elif self.param['fit_organics']:
+            print('diam_organics \t = \t' + str(self.param['diam_organics']))
+            print('vmr_organics \t = \t' + str(self.param['vmr_organics']))    
 
         print('Rp \t\t = \t' + str(self.param['Rp']))
         print('Mp \t\t = \t' + str(self.param['Mp']))
