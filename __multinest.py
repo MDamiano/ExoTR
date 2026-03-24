@@ -156,6 +156,9 @@ class MULTINEST:
             elif self.param['fit_soot']:
                 evaluation['dsoot'], evaluation['vmrsoot'] = (10. ** cube[par]), (10. ** cube[par + 1])  # diameter and soot haze VMR
                 par += 2
+            elif self.param['fit_organics']:
+                evaluation['dorganics'], evaluation['vmrorganics'] = (10. ** cube[par]), (10. ** cube[par + 1])  # diameter and organics haze VMR
+                par += 2    
 
             if self.param['gas_par_space'] == 'clr':
                 for mol in self.param['fit_molecules']:
@@ -268,6 +271,11 @@ class MULTINEST:
                 cube[par] = cube[par] * (self.param['dsoot_range'][1] - self.param['dsoot_range'][0]) + self.param['dsoot_range'][0]
                 cube[par + 1] = cube[par + 1] * (self.param['vmrsoot_range'][1] - self.param['vmrsoot_range'][0]) + self.param['vmrsoot_range'][0]
                 par += 2
+
+            elif self.param['fit_organics']:
+                cube[par] = cube[par] * (self.param['dorganics_range'][1] - self.param['dorganics_range'][0]) + self.param['dorganics_range'][0]
+                cube[par + 1] = cube[par + 1] * (self.param['vmrorganics_range'][1] - self.param['vmrorganics_range'][0]) + self.param['vmrorganics_range'][0]
+                par += 2    
 
             for _ in self.param['fit_molecules']:
                 if self.param['gas_par_space'] == 'clr':
@@ -521,6 +529,11 @@ class MULTINEST:
             self.param['diam_soot'] = (10. ** cube[par])
             self.param['vmr_soot'] = (10. ** cube[par + 1])
             par += 2
+
+        elif self.param['fit_organics']:
+            self.param['diam_organics'] = (10. ** cube[par])
+            self.param['vmr_organics'] = (10. ** cube[par + 1])
+            par += 2    
 
         if not self.param['bare_rock']:
             if self.param['gas_par_space'] == 'clr':
@@ -1291,6 +1304,9 @@ class MULTINEST:
             elif self.param['fit_soot']:
                 par.append("Log(d$_{soot}$)")
                 par.append("Log(soot)")
+            elif self.param['fit_organics']:
+                par.append("Log(d$_{organics}$)")
+                par.append("Log(organics)")    
             if not self.param['bare_rock']:
                 for mol in self.param['fit_molecules']:
                     par.append(self.param['formatted_labels'][mol])

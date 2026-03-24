@@ -225,6 +225,16 @@ class FORWARD_MODEL:
                 )
                 d_haze = np.full(np.shape(NL), self.param['diam_soot'])
                 f_haze = self.param['vmr_soot']
+            elif self.param['fit_organics']:
+                tck_haze = RegularGridInterpolator(
+                    (self.param['opacda'][0], self.param['opacwa'][0]),
+                    self.param['opacaerHe2024organics'],
+                    bounds_error=False,
+                    fill_value=None,
+                    method='linear'
+                )
+                d_haze = np.full(np.shape(NL), self.param['diam_organics'])
+                f_haze = self.param['vmr_organics']    
 
             # Evaluate haze cross-sections over (diameter, wavelength) grid
             W_haze, D_haze = np.meshgrid(self.param['opacw'][0], np.ndarray.flatten(d_haze))
@@ -605,6 +615,10 @@ def forward(param, evaluation=None, retrieval_mode=True):
         if param['fit_soot']:
             param['diam_soot'] = evaluation['dsoot']
             param['vmr_soot'] = evaluation['vmrsoot']
+
+        if param['fit_organics']:
+            param['diam_organics'] = evaluation['dorganics']
+            param['vmr_organics'] = evaluation['vmrorganics']    
 
         if not param['bare_rock']:
             clogr = {}

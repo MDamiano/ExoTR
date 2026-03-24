@@ -369,12 +369,19 @@ def read_parfile(param, parfile=None):
         if param['haze_type'] == 'tholin':
             param['fit_tholin'] = True
             param['fit_soot'] = False
+            param['fit_organics'] = False
         elif param['haze_type'] == 'soot':
             param['fit_tholin'] = False
             param['fit_soot'] = True
+            param['fit_organics'] = False
+        elif param['haze_type'] == 'organics':
+            param['fit_tholin'] = False
+            param['fit_soot'] = False
+            param['fit_organics'] = True    
     else:
         param['fit_tholin'] = False
         param['fit_soot'] = False
+        param['fit_organics'] = False
 
     if param['optimizer'] == 'multinest':
         param['nlive_p'] = int(param['nlive_p'])
@@ -741,6 +748,9 @@ def ranges(param):
     if param['fit_soot']:
         param['dsoot_range'] = [-3, 2]  # diameter of soot haze particle
         param['vmrsoot_range'] = [-10, -1]
+    if param['fit_organics']:
+        param['dorganics_range'] = [-3, 2]  # diameter of organics haze particle
+        param['vmrorganics_range'] = [-10, -1]    
     if param['fit_T'] and param['Tp'] is None and param['TP_profile'] is None:
         param['tp_range'] = [param['T_lower'], param['T_upper']]  # Atmospheric equilibrium temperature
     elif param['fit_T'] and param['Tp'] is None and param['TP_profile'] is not None:
@@ -842,7 +852,7 @@ def pre_load_variables(param, for_plotting=False):
         It also initializes the opacity without clouds to zero.
     """
     if not param['bare_rock']:
-        data = scipy.io.loadmat(param['pkg_dir'] + 'Data/opac/opac_082025.mat')
+        data = scipy.io.loadmat(param['pkg_dir'] + 'Data/opac/opac_102025.mat')
         opac_data_keys = []
         for i in data.keys():
             if i != '__header__' and i != '__globals__' and i != '__version__':
@@ -978,6 +988,9 @@ def retrieval_par_and_npar(param):
     if param['fit_soot']:
         parameters.append("Log(diam$_{soot}$)")
         parameters.append("Log(vmr$_{soot}$)")
+    if param['fit_organics']:
+        parameters.append("Log(diam$_{organics}$)")
+        parameters.append("Log(vmr$_{organics}$)")    
     if param['fit_H2O']:
         parameters.append("clr(H$_2$O)")
     if param['fit_CH4']:
