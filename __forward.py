@@ -351,7 +351,7 @@ class FORWARD_MODEL:
         r2 = (3. * Vs / 4. / math.pi) ** (1. / 3.) * np.exp(- 0.5 * np.log(sig) ** 2.) * 1.0E+6
         VP = Vs * 1.0E+6
 
-        return float(r0), float(r1), float(r2), float(VP)
+        return float(r0[0]), float(r1[0]), float(r2[0]), float(VP[0])
 
     def stellar_activity(self):
         def take_star_spectrum(Ts, meta=None):
