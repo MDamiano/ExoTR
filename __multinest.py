@@ -723,6 +723,79 @@ class MULTINEST:
                     np.savetxt(self.param['out_dir'] + 'Best_fit_(solution ' + str(solutions) + ')_MAP.dat', best_fit)
         plt.close()
 
+        wl_sorted = self.param['spectrum']['wl'][self.param['sorted_data_idx']]
+        if self.param['spectrum']['bins']:
+            wl_low_sorted = self.param['spectrum']['wl_low'][self.param['sorted_data_idx']]
+            wl_high_sorted = self.param['spectrum']['wl_high'][self.param['sorted_data_idx']]
+            delta_lambda = wl_high_sorted - wl_low_sorted
+            wl_start = wl_low_sorted[0]
+            wl_finish = wl_high_sorted[-1]
+        else:
+            delta_lambda = np.gradient(wl_sorted)
+            wl_start = wl_sorted[0]
+            wl_finish = wl_sorted[-1]
+
+        valid_resolution = np.isfinite(delta_lambda) & (delta_lambda > 0.)
+        if np.any(valid_resolution):
+            avg_resolution = np.mean(wl_sorted[valid_resolution] / delta_lambda[valid_resolution])
+        else:
+            avg_resolution = 0.
+
+        if avg_resolution > 300.:
+            binned_wl_bins = reso_range(wl_start, wl_finish, res=60, bins=True)
+            binned_wl = np.mean(binned_wl_bins, axis=1)
+            data_binned, err_binned = custom_spectral_binning(
+                binned_wl_bins,
+                wl_sorted,
+                self.param['spectrum']['T_depth'][self.param['sorted_data_idx']],
+                err=self.param['spectrum']['error_T'][self.param['sorted_data_idx']],
+                bins=True
+            )
+            model_binned = custom_spectral_binning(binned_wl_bins, best_fit[:, 0], best_fit[:, 1], bins=True)
+
+            valid_binned = np.isfinite(data_binned) & np.isfinite(err_binned) & np.isfinite(model_binned)
+            if np.any(valid_binned):
+                fig = plt.figure(figsize=(8, 5))
+                plt.errorbar(
+                    binned_wl[valid_binned],
+                    data_binned[valid_binned] * 1e6,
+                    yerr=err_binned[valid_binned] * 1e6,
+                    linestyle='',
+                    linewidth=0.5,
+                    color='black',
+                    marker='o',
+                    markerfacecolor='red',
+                    markersize=4,
+                    capsize=1.75
+                )
+                plt.plot(binned_wl[valid_binned], model_binned[valid_binned] * 1e6, color='#404784', label=lab)
+
+                if best_fit.shape[1] > 2:
+                    sigma_1_hi = custom_spectral_binning(binned_wl_bins, best_fit[:, 0], best_fit[:, 2], bins=True)
+                    sigma_1_lo = custom_spectral_binning(binned_wl_bins, best_fit[:, 0], best_fit[:, 3], bins=True)
+                    sigma_2_hi = custom_spectral_binning(binned_wl_bins, best_fit[:, 0], best_fit[:, 4], bins=True)
+                    sigma_2_lo = custom_spectral_binning(binned_wl_bins, best_fit[:, 0], best_fit[:, 5], bins=True)
+                    sigma_3_hi = custom_spectral_binning(binned_wl_bins, best_fit[:, 0], best_fit[:, 6], bins=True)
+                    sigma_3_lo = custom_spectral_binning(binned_wl_bins, best_fit[:, 0], best_fit[:, 7], bins=True)
+
+                    valid_sigma_3 = valid_binned & np.isfinite(sigma_3_hi) & np.isfinite(sigma_3_lo)
+                    valid_sigma_2 = valid_binned & np.isfinite(sigma_2_hi) & np.isfinite(sigma_2_lo)
+                    valid_sigma_1 = valid_binned & np.isfinite(sigma_1_hi) & np.isfinite(sigma_1_lo)
+
+                    if np.any(valid_sigma_3):
+                        plt.fill_between(binned_wl[valid_sigma_3], sigma_3_hi[valid_sigma_3] * 1e6, sigma_3_lo[valid_sigma_3] * 1e6, ec=('#404784', 0.0), fc=('#404784', 0.25), label='3$\sigma$')
+                    if np.any(valid_sigma_2):
+                        plt.fill_between(binned_wl[valid_sigma_2], sigma_2_hi[valid_sigma_2] * 1e6, sigma_2_lo[valid_sigma_2] * 1e6, ec=('#404784', 0.0), fc=('#404784', 0.5), label='2$\sigma$')
+                    if np.any(valid_sigma_1):
+                        plt.fill_between(binned_wl[valid_sigma_1], sigma_1_hi[valid_sigma_1] * 1e6, sigma_1_lo[valid_sigma_1] * 1e6, ec=('#404784', 0.0), fc=('#404784', 0.75), label='1$\sigma$')
+
+                plt.legend(frameon=False)
+                plt.xlabel('Wavelength [$\mu$m]')
+                plt.ylabel('Transit depth (R$_p$/R$_{\star}$)$^2$ [ppm]')
+                fig.tight_layout()
+                plt.savefig(self.param['out_dir'] + 'Nest_spectrum_binned.pdf')
+                plt.close()
+
     def plot_P_profiles(self, solutions=None):
         """
             Plots the vertical distribution of molecular volume mixing ratios and mean molecular weight.
@@ -1055,6 +1128,7 @@ class MULTINEST:
             self.param['spectrum']['bins'] = True
 
     def calc_spectra(self, mc_samples):
+        rank = MPIrank if MPIimport else 0
         if self.param['extended_wl_plot']:
             new_wl = reso_range(self.param['min_wl'] - 0.05, 20, res=500, bins=True)
             temp_max_wl = self.param['max_wl'] + 0.0
@@ -1143,7 +1217,7 @@ class MULTINEST:
                 - If mds is less than 2, the function processes the results as a unimodal solution, otherwise it processes them as a multimodal solution.
         """
         from numpy import log
-        from six.moves import range
+        from six.moves import range # type: ignore
         import logging
         import types
         from matplotlib.ticker import MaxNLocator, NullLocator
